@@ -1,0 +1,28 @@
+# Nixpacks (Coolify) configuration
+# Docs: https://nixpacks.com/docs/configuration/file
+
+# Prisma 7.8 requires Node 20.19+, 22.12+, or 24+.
+# Default Nixpacks Node 22 is 22.11 — pin a nixpkgs snapshot with 22.13.1.
+[phases.setup]
+nixpkgsArchive = "51ad838b03a05b1de6f9f2a0fffecee64a9788ee"
+
+# Coolify may inject NODE_ENV=production at build time, which makes `npm ci`
+# skip devDependencies (@nestjs/cli, typescript, etc.). Force them for the build.
+# --ignore-scripts: skip postinstall (prisma generate) here; build phase runs it.
+[phases.install]
+cmds = ["npm ci --include=dev --ignore-scripts"]
+
+# Force development during compile so Nest/TS devDependencies work even if Coolify
+# injects NODE_ENV=production at build time. NODE_OPTIONS avoids OOM on small VPS.
+[phases.build]
+cmds = ["NODE_ENV=development NODE_OPTIONS=--max-old-space-size=4096 npm run build"]
+
+# Do not override this in Coolify — it runs migrations then starts the API.
+[start]
+cmd = "npm run start:container"
+
+[variables]
+NIXPACKS_NODE_VERSION = "22"
+NODE_OPTIONS = "--max-old-space-size=4096"
+# NestJS listen port — must match Coolify backend "Ports Exposes" (3005).
+PORT = "3005"

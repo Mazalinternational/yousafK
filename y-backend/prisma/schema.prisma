@@ -1,0 +1,1348 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =============================================================================
+// AUTH & RBAC
+// -----------------------------------------------------------------------------
+// User: the principal that authenticates. Soft-deletable.
+// Role: a named bundle of permissions. The "admin" role is a system role that
+//       implicitly grants every permission (wildcard short-circuit in the
+//       PermissionsGuard).
+// Permission: a (module, action) pair. The denormalized `key` ("module.action")
+//             is what guards/decorators check against at runtime.
+// UserRole / RolePermission: explicit join tables (Prisma needs them so we can
+//                            attach metadata like assignedAt/assignedBy).
+// Session: one per browser/device login. Owns a chain (family) of refresh
+//          tokens. Revoking a session revokes every refresh token in it.
+// RefreshToken: only the SHA-256 hash is stored. Rotated on every /auth/refresh.
+//               Reuse of a revoked token marks `reuseDetectedAt` and revokes
+//               the entire family (token-family invalidation).
+// PasswordReset: hashed reset token. One-time use.
+// AuditLog: append-only event log for security/admin events.
+// =============================================================================
+
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  emailNormalized   String    @unique @map("email_normalized")
+  name              String
+  profilePicturePath String?  @map("profile_picture_path")
+  passwordHash      String    @map("password_hash")
+  isActive          Boolean   @default(true) @map("is_active")
+  isLocked          Boolean   @default(false) @map("is_locked")
+  failedLoginCount  Int       @default(0) @map("failed_login_count")
+  lockedUntil       DateTime? @map("locked_until")
+  lastLoginAt       DateTime? @map("last_login_at")
+  lastLoginIp       String?   @map("last_login_ip")
+  passwordChangedAt DateTime? @map("password_changed_at")
+  deletedAt         DateTime? @map("deleted_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  createdById       String?   @map("created_by_id")
+
+  roles          UserRole[]
+  sessions       Session[]
+  refreshTokens  RefreshToken[]
+  passwordResets PasswordReset[]
+  auditLogs      AuditLog[]      @relation("AuditLogActor")
+  createdBy      User?           @relation("UserCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdUsers   User[]          @relation("UserCreatedBy")
+
+  @@index([emailNormalized])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  users       UserRole[]
+  permissions RolePermission[]
+
+  @@index([slug])
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  module      String
+  action      String
+  key         String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  roles RolePermission[]
+
+  @@unique([module, action])
+  @@index([module])
+  @@map("permissions")
+}
+
+model UserRole {
+  userId     String   @map("user_id")
+  roleId     String   @map("role_id")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+  assignedBy String?  @map("assigned_by")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId       String @map("role_id")
+  permissionId String @map("permission_id")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model Session {
+  id         String    @id @default(cuid())
+  userId     String    @map("user_id")
+  ipAddress  String?   @map("ip_address")
+  userAgent  String?   @map("user_agent")
+  device     String?
+  lastUsedAt DateTime  @default(now()) @map("last_used_at")
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokens RefreshToken[]
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@map("sessions")
+}
+
+model RefreshToken {
+  id              String    @id @default(cuid())
+  userId          String    @map("user_id")
+  sessionId       String    @map("session_id")
+  tokenHash       String    @unique @map("token_hash")
+  family          String
+  expiresAt       DateTime  @map("expires_at")
+  revokedAt       DateTime? @map("revoked_at")
+  replacedById    String?   @map("replaced_by_id")
+  reuseDetectedAt DateTime? @map("reuse_detected_at")
+  ipAddress       String?   @map("ip_address")
+  userAgent       String?   @map("user_agent")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sessionId])
+  @@index([family])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model PasswordReset {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_resets")
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  userId       String?  @map("user_id")
+  actorEmail   String?  @map("actor_email")
+  action       String
+  module       String?
+  resourceId   String?  @map("resource_id")
+  resourceType String?  @map("resource_type")
+  status       String
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  metadata     Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User? @relation("AuditLogActor", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([module])
+  @@index([createdAt])
+  @@index([status])
+  @@map("audit_logs")
+}
+
+enum SeasonStatus {
+  ACTIVE
+  CLOSED
+}
+
+enum PaddyStockType {
+  company
+  farmer
+}
+
+enum PaddyPaymentType {
+  paid
+  partial_paid
+  remaining
+}
+
+enum RiceSalePaymentChannel {
+  cash
+  saraf
+}
+
+enum ExpenseSettlementMode {
+  direct
+  vendor
+}
+
+enum RiceSaleChargeType {
+  rice
+  loading
+  bags
+}
+
+enum StoreVarietySaleChargeType {
+  sale
+  loading
+  bags
+}
+
+enum EnteringPaddyReceivedFrom {
+  farmer
+  seller
+}
+
+enum CustomerType {
+  paddy_farmer
+  paddy_seller
+  rice_seller
+  buyer
+  process_production_buyer
+  vendor
+  debtor
+}
+
+enum EnteringPaddyWeightUnit {
+  one_kg
+  seven_kg
+  ton
+}
+
+enum CustomerLedgerType {
+  company_owned
+  farmer_owned
+  rice_owned
+  process_production_owned
+}
+
+enum CustomerLedgerEntryType {
+  company_receivable
+  company_payment
+  company_payment_on_behalf
+  company_payment_received_on_behalf
+  farmer_obligation
+  farmer_rice_return
+  buyer_payment
+  buyer_payment_on_behalf
+  buyer_payment_received_on_behalf
+  buyer_debit
+  buyer_credit
+  seller_debit
+  seller_credit
+  vendor_expense
+  vendor_payment
+  debtor_disbursement
+  debtor_repayment
+}
+
+enum StoreType {
+  short_green
+  regection
+  broken_rice
+  waste
+}
+
+enum StoreEntryStatus {
+  stock
+  sold
+}
+
+model Season {
+  id                        String                     @id @default(cuid())
+  name                      String
+  code                      String?                    @unique
+  startDate                 DateTime                   @map("start_date")
+  endDate                   DateTime?                  @map("end_date")
+  status                    SeasonStatus               @default(ACTIVE)
+  closingNotes              String?                    @map("closing_notes")
+  totalSales                Decimal                    @default(0) @map("total_sales") @db.Decimal(18, 2)
+  totalExpenses             Decimal                    @default(0) @map("total_expenses") @db.Decimal(18, 2)
+  totalPurchases            Decimal                    @default(0) @map("total_purchases") @db.Decimal(18, 2)
+  closedAt                  DateTime?                  @map("closed_at")
+  createdAt                 DateTime                   @default(now()) @map("created_at")
+  updatedAt                 DateTime                   @updatedAt @map("updated_at")
+  companyOwnedPaddyWarehouses CompanyOwnedPaddyWarehouse[]
+  farmerOwnedPaddyWarehouses FarmerOwnedPaddyWarehouse[]
+  riceWarehouses            RiceWarehouse[]
+  enteringPaddies           EnteringPaddy[]
+  customers                 Customer[]
+  paddyProcesses            PaddyProcess[]
+  storeEntries              StoreEntry[]
+  storeVarietyStocks        StoreVarietyStock[]
+  paddyVarietyStocks        PaddyVarietyStock[]
+  riceVarietyStocks         RiceVarietyStock[]
+  storeVarietySales         StoreVarietySale[]
+  processRiceEntries        ProcessRiceEntry[]
+  employees                 Employee[]
+  jwalis                    Jwali[]
+  sarafs                    Saraf[]
+  investors                 Investor[]
+  riceSales                 RiceSale[]
+  riceCharities             RiceCharity[]
+  cashTransactions          CashTransaction[]
+  expenses                  Expense[]
+
+  @@index([status])
+  @@index([startDate])
+  @@map("seasons")
+}
+
+model Jwali {
+  id         BigInt   @id @default(autoincrement()) @db.BigInt
+  name       String
+  phoneNo    String   @map("phone_no")
+  address    String
+  notes      String?
+  seasonId   String   @map("season_id")
+  seasonName String   @map("season_name")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  season        Season             @relation(fields: [seasonId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  ledger        JwaliLedger?
+  ledgerEntries JwaliLedgerEntry[]
+  payments      JwaliPayment[]
+
+  @@index([seasonId])
+  @@index([name])
+  @@index([phoneNo])
+  @@map("jwalis")
+}
+
+model JwaliLedger {
+  id        BigInt   @id @default(autoincrement()) @db.BigInt
+  jwaliId   BigInt   @unique @map("jwali_id") @db.BigInt
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  jwali    Jwali              @relation(fields: [jwaliId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  entries  JwaliLedgerEntry[]
+  payments JwaliPayment[]
+
+  @@index([jwaliId])
+  @@map("jwali_ledgers")
+}
+
+model JwaliLedgerEntry {
+  id         BigInt   @id @default(autoincrement()) @db.BigInt
+  ledgerId   BigInt   @map("ledger_id") @db.BigInt
+  jwaliId    BigInt   @map("jwali_id") @db.BigInt
+  bagCount   Int      @map("bag_count")
+  ratePerBag Decimal  @map("rate_per_bag") @db.Decimal(18, 2)
+  amount     Decimal  @db.Decimal(18, 2)
+  currencyId String?  @map("currency_id")
+  occurredAt DateTime @map("occurred_at")
+  notes      String?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  ledger   JwaliLedger @relation(fields: [ledgerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  jwali    Jwali       @relation(fields: [jwaliId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  currency Currency?   @relation("JwaliLedgerEntryCurrency", fields: [currencyId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([ledgerId])
+  @@index([jwaliId])
+  @@index([occurredAt])
+  @@index([currencyId])
+  @@map("jwali_ledger_entries")
+}
+
+model JwaliPayment {
+  id                    BigInt                 @id @default(autoincrement()) @db.BigInt
+  ledgerId              BigInt                 @map("ledger_id") @db.BigInt
+  jwaliId               BigInt                 @map("jwali_id") @db.BigInt
+  amount                Decimal                @db.Decimal(18, 2)
+  occurredAt            DateTime               @map("occurred_at")
+  paymentChannel        RiceSalePaymentChannel @default(cash) @map("payment_channel")
+  sarafId               BigInt?                @map("saraf_id") @db.BigInt
+  currencyId            String?                @map("currency_id")
+  sarafLedgerCurrencyId String?                @map("saraf_ledger_currency_id")
+  notes                 String?
+  createdAt             DateTime               @default(now()) @map("created_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
+
+  ledger              JwaliLedger       @relation(fields: [ledgerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  jwali               Jwali             @relation(fields: [jwaliId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  saraf               Saraf?            @relation(fields: [sarafId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  currency            Currency?         @relation("JwaliPaymentCurrency", fields: [currencyId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sarafLedgerCurrency Currency?         @relation("JwaliPaymentSarafCurrency", fields: [sarafLedgerCurrencyId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sarafLedgerEntry    SarafLedgerEntry?
+
+  @@index([ledgerId])
+  @@index([jwaliId])
+  @@index([occurredAt])
+  @@index([sarafId])
+  @@index([paymentChannel])
+  @@index([currencyId])
+  @@map("jwali_payments")
+}
+
+model Saraf {
+  id         BigInt   @id @default(autoincrement()) @db.BigInt
+  name       String
+  phoneNo    String   @map("phone_no")
+  address    String
+  notes      String?
+  seasonId   String   @map("season_id")
+  seasonName String   @map("season_name")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  season                   Season                     @relation(fields: [seasonId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  ledger                   SarafLedger?
+  ledgerEntries            SarafLedgerEntry[]
+  riceSales                RiceSale[]
+  riceSalesLoading         RiceSale[]                   @relation("RiceSaleLoadingSaraf")
+  riceSalesBags            RiceSale[]                   @relation("RiceSaleBagsSaraf")
+  companyPaddyPurchases    CompanyOwnedPaddyWarehouse[]
+  riceWarehousePurchases   RiceWarehouse[]
+  employeeSalaryPayments   EmployeeLedgerEntry[]
+  jwaliPayments            JwaliPayment[]
+  storeEntries             StoreEntry[]
+  storeVarietySales        StoreVarietySale[]
+  storeVarietySalesLoading StoreVarietySale[]             @relation("StoreVarietySaleLoadingSaraf")
+  storeVarietySalesBags    StoreVarietySale[]             @relation("StoreVarietySaleBagsSaraf")
+  customerLedgerPayments   CustomerLedgerEntry[]
+  expenses                 Expense[]
+
+  @@index([seasonId])
+  @@index([name])
+  @@index([phoneNo])
+  @@map("sarafs")
+}
+
+model Investor {
+  id              BigInt   @id @default(autoincrement()) @db.BigInt
+  name            String
+  phoneNo         String   @map("phone_no")
+  address         String
+  sharePercentage Decimal  @map("share_percentage") @db.Decimal(5, 2)
+  investedAmount  Decimal  @default(0) @map("invested_amount") @db.Decimal(18, 2)
+  isActive        Boolean  @default(true) @map("is_active")
+  notes           String?
+  seasonId        String   @map("season_id")
+  seasonName      String   @map("season_name")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([seasonId])
+  @@index([name])
+  @@index([phoneNo])
+  @@index([isActive])
+  @@map("investors")
+}
+
+model SarafLedger {
+  id        BigInt   @id @default(autoincrement()) @db.BigInt
+  sarafId   BigInt   @unique @map("saraf_id") @db.BigInt
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  saraf   Saraf              @relation(fields: [sarafId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  entries SarafLedgerEntry[]
+
+  @@index([sarafId])
+  @@map("saraf_ledgers")
+}
+
+model SarafLedgerEntry {
+  id                             BigInt   @id @default(autoincrement()) @db.BigInt
+  ledgerId                       BigInt   @map("ledger_id") @db.BigInt
+  sarafId                        BigInt   @map("saraf_id") @db.BigInt
+  currencyId                     String   @map("currency_id")
+  amount                         Decimal  @db.Decimal(18, 2)
+  occurredAt                     DateTime @map("occurred_at")
+  notes                          String?
+  riceSaleId                     BigInt?  @map("rice_sale_id") @db.BigInt
+  riceSaleChargeType             RiceSaleChargeType? @map("rice_sale_charge_type")
+  companyOwnedPaddyWarehouseId  BigInt?  @unique @map("company_owned_paddy_warehouse_id") @db.BigInt
+  riceWarehouseId               BigInt?  @unique @map("rice_warehouse_id") @db.BigInt
+  employeeLedgerEntryId         BigInt?  @unique @map("employee_ledger_entry_id") @db.BigInt
+  jwaliPaymentId                BigInt?  @unique @map("jwali_payment_id") @db.BigInt
+  storeEntryId                  BigInt?  @map("store_entry_id") @db.BigInt
+  storeVarietySaleId            BigInt?  @map("store_variety_sale_id") @db.BigInt
+  storeVarietySaleChargeType    StoreVarietySaleChargeType? @map("store_variety_sale_charge_type")
+  expenseId                     BigInt?  @unique @map("expense_id") @db.BigInt
+  customerLedgerEntryId         BigInt?  @unique @map("customer_ledger_entry_id") @db.BigInt
+  createdAt                      DateTime @default(now()) @map("created_at")
+  updatedAt                      DateTime @updatedAt @map("updated_at")
+
+  ledger                       SarafLedger                 @relation(fields: [ledgerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  saraf                        Saraf                       @relation(fields: [sarafId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  currency                     Currency                    @relation(fields: [currencyId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  riceSale                     RiceSale?                   @relation("RiceSaleSarafEntries", fields: [riceSaleId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  companyOwnedPaddyWarehouse   CompanyOwnedPaddyWarehouse? @relation(fields: [companyOwnedPaddyWarehouseId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  riceWarehouse                RiceWarehouse?              @relation(fields: [riceWarehouseId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  employeeLedgerEntry          EmployeeLedgerEntry?        @relation(fields: [employeeLedgerEntryId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  jwaliPayment                 JwaliPayment?               @relation(fields: [jwaliPaymentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  storeEntry                   StoreEntry?                 @relation(fields: [storeEntryId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  storeVarietySale             StoreVarietySale?           @relation("StoreVarietySaleSarafEntries", fields: [storeVarietySaleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  customerLedgerEntry          CustomerLedgerEntry?        @relation(fields: [customerLedgerEntryId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  expense                      Expense?                    @relation(fields: [expenseId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([ledgerId])
+  @@index([sarafId])
+  @@index([currencyId])
+  @@index([occurredAt])
+  @@index([riceSaleId])
+  @@index([companyOwnedPaddyWarehouseId])
+  @@index([riceWarehouseId])
+  @@index([employeeLedgerEntryId])
+  @@index([jwaliPaymentId])
+  @@index([storeEntryId])
+  @@index([expenseId])
+  @@index([customerLedgerEntryId])
+  @@map("saraf_ledger_entries")
+}
+
+model Employee {
+  id            BigInt   @id @default(autoincrement()) @db.BigInt
+  employeeNo    String   @unique @map("employee_no")
+  name          String
+  position      String
+  phoneNo       String   @map("phone_no")
+  address       String
+  joinDate      DateTime @map("join_date")
+  monthlySalary Decimal  @map("monthly_salary") @db.Decimal(18, 2)
+  status        String
+  notes         String?
+  seasonId      String   @map("season_id")
+  seasonName    String   @map("season_name")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  season        Season               @relation(fields: [seasonId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  ledger        EmployeeLedger?
+  ledgerEntries EmployeeLedgerEntry[]
+
+  @@index([seasonId])
+  @@index([employeeNo])
+  @@index([name])
+  @@index([status])
+  @@map("employees")
+}
+
+model EmployeeLedger {
+  id         BigInt   @id @default(autoincrement()) @db.BigInt
+  employeeId BigInt   @unique @map("employee_id") @db.BigInt
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  employee Employee              @relation(fields: [employeeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  entries   EmployeeLedgerEntry[]
+
+  @@index([employeeId])
+  @@map("employee_ledgers")
+}
+
+model EmployeeLedgerEntry {
+  id                    BigInt                 @id @default(autoincrement()) @db.BigInt
+  ledgerId             BigInt                 @map("ledger_id") @db.BigInt
+  employeeId           BigInt                 @map("employee_id") @db.BigInt
+  entryType            String                 @map("entry_type")
+  amount               Decimal                @db.Decimal(18, 2)
+  salaryMonth          DateTime               @map("salary_month")
+  occurredAt           DateTime               @map("occurred_at")
+  isAdvance            Boolean                @default(false) @map("is_advance")
+  paymentChannel       RiceSalePaymentChannel @default(cash) @map("payment_channel")
+  sarafId              BigInt?                @map("saraf_id") @db.BigInt
+  sarafLedgerCurrencyId String?               @map("saraf_ledger_currency_id")
+  notes                String?
+  createdAt            DateTime               @default(now()) @map("created_at")
+  updatedAt            DateTime               @updatedAt @map("updated_at")
+
+  ledger              EmployeeLedger    @relation(fields: [ledgerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  employee            Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  saraf               Saraf?            @relation(fields: [sarafId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sarafLedgerCurrency Currency?         @relation("EmployeeSalarySarafCurrency", fields: [sarafLedgerCurrencyId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sarafLedgerEntry    SarafLedgerEntry?
+  cashTransaction     CashTransaction?
+
+  @@index([ledgerId])
+  @@index([employeeId])
+  @@index([entryType])
+  @@index([salaryMonth])
+  @@index([occurredAt])
+  @@index([sarafId])
+  @@index([paymentChannel])
+  @@map("employee_ledger_entries")
+}
+
+model CompanyOwnedPaddyWarehouse {
+  id                    BigInt                 @id @default(autoincrement()) @db.BigInt
+  enteringPaddyId       BigInt?                @unique @map("entering_paddy_id") @db.BigInt
+  billNo                String                 @map("bill_no")
+  enteringBillNo        String?                @map("entering_bill_no")
+  stockType             PaddyStockType         @default(company) @map("stock_type")
+  variety               String
+  quantity              Decimal                @db.Decimal(18, 2)
+  unit                  String
+  ownerName             String                 @map("owner_name")
+  rate                  Decimal                @db.Decimal(18, 2)
+  totalAmount           Decimal                @map("total_amount") @db.Decimal(18, 2)
+  paymentType           PaddyPaymentType       @default(remaining) @map("payment_type")
+  paidAmount            Decimal                @default(0) @map("paid_amount") @db.Decimal(18, 2)
+  remainingAmount       Decimal                @map("remaining_amount") @db.Decimal(18, 2)
+  paymentChannel        RiceSalePaymentChannel @default(cash) @map("payment_channel")
+  sarafId               BigInt?                @map("saraf_id") @db.BigInt
+  sarafLedgerCurrencyId String?                @map("saraf_ledger_currency_id")
+  receivedDate          DateTime               @map("received_date")
+  notes                 String?
+  seasonId              String                 @map("season_id")
+  seasonName            String                 @map("season_name")
+  createdAt             DateTime               @default(now()) @map("created_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
+
+  season              Season              @relation(fields: [seasonId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  enteringPaddy       EnteringPaddy?      @relation("EnteringPaddyToCompanyWarehouse", fields: [enteringPaddyId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  saraf               Saraf?              @relation(fields: [sarafId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sarafLedgerCurrency Currency?           @relation("CompanyPaddySarafCurrency", fields: [sarafLedgerCurrencyId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sarafLedgerEntry    SarafLedgerEntry?
+  cashTransaction     CashTransaction?
+  paddyProcesses      PaddyProcess[]
+
+  @@index([seasonId])
+  @@index([enteringPaddyId])
+  @@index([billNo])
+  @@index([enteringBillNo])
+  @@index([receivedDate])
+  @@index([ownerName])
+  @@index([variety])
+  @@index([paymentType])
+  @@index([sarafId])
+  @@index([paymentChannel])
+  @@map("company_owned_paddy_warehouses")
+}
+
+model PaddyProcess {
+  id                            BigInt   @id @default(autoincrement()) @db.BigInt
+  sourceCompanyPaddyWarehouseId BigInt?  @map("source_company_paddy_warehouse_id") @db.BigInt
+  sourceFarmerPaddyWarehouseId  BigInt?  @map("source_farmer_paddy_warehouse_id") @db.BigInt
+  stockSourceType               String   @default("company") @map("stock_source_type")
+  billNo                        String   @map("bill_no")
+  status                        String   @default("under_process")
+  variety                       String
+  date                          DateTime
+  endDate                       DateTime? @map("end_date")
+  weight                        Decimal  @db.Decimal(18, 2)
+  unit                          String
+  processedWeightKg             Decimal  @map("processed_weight_kg") @db.Decimal(18, 2)
+  seasonId                      String   @map("season_id")
+  seasonName                    String   @map("season_name")
+  createdAt                     DateTime @default(now()) @map("created_at")
+  updatedAt                     DateTime @updatedAt @map("updated_at")
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceCompanyPaddyWarehouse CompanyOwnedPaddyWarehouse? @relation(fields: [sourceCompanyPaddyWarehouseId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sourceFarmerPaddyWarehouse FarmerOwnedPaddyWarehouse? @relation(fields: [sourceFarmerPaddyWarehouseId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  storeEntries StoreEntry[]
+  processRiceEntries ProcessRiceEntry[]
+
+  @@index([seasonId])
+  @@index([sourceCompanyPaddyWarehouseId])
+  @@index([sourceFarmerPaddyWarehouseId])
+  @@index([billNo])
+  @@index([variety])
+  @@index([date])
+  @@map("paddy_processes")
+}
+
+model StoreEntry {
+  id                  BigInt    @id @default(autoincrement()) @db.BigInt
+  storeType           StoreType @map("store_type")
+  sourcePaddyProcessId BigInt   @map("source_paddy_process_id") @db.BigInt
+  processedBillNo     String    @map("processed_bill_no")
+  processBillNo       String    @map("process_bill_no")
+  billNo              String    @map("bill_no")
+  date                DateTime
+  variety             String
+  weight              Decimal   @db.Decimal(18, 2)
+  soldWeight          Decimal   @default(0) @map("sold_weight") @db.Decimal(18, 2)
+  unit                String
+  processedWeightKg   Decimal   @map("processed_weight_kg") @db.Decimal(18, 2)
+  status              StoreEntryStatus @default(stock)
+  saleAmount          Decimal   @default(0) @map("sale_amount") @db.Decimal(18, 2)
+  paidInCash          Boolean   @default(false) @map("paid_in_cash")
+  paymentChannel      RiceSalePaymentChannel @default(cash) @map("payment_channel")
+  sarafId             BigInt?   @map("saraf_id") @db.BigInt
+  sarafLedgerCurrencyId String? @map("saraf_ledger_currency_id")
+  ownerName           String    @map("owner_name")
+  seasonId            String    @map("season_id")
+  seasonName          String    @map("season_name")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourcePaddyProcess PaddyProcess @relation(fields: [sourcePaddyProcessId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  saraf Saraf? @relation(fields: [sarafId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sarafLedgerCurrency Currency? @relation("StoreSaleSarafCurrency", fields: [sarafLedgerCurrencyId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sarafLedgerEntries SarafLedgerEntry[]
+
+  @@index([storeType])
+  @@index([status])
+  @@index([seasonId])
+  @@index([sourcePaddyProcessId])
+  @@index([processedBillNo])
+  @@index([processBillNo])
+  @@index([billNo])
+  @@index([date])
+  @@index([variety])
+  @@index([ownerName])
+  @@index([sarafId])
+  @@index([paymentChannel])
+  @@unique([storeType, sourcePaddyProcessId], map: "store_entries_store_type_source_paddy_process_id_key")
+  @@map("store_entries")
+}
+
+/// Per-season inventory by store type and variety (from Process). Updated when store entries change; used for selling later.
+model StoreVarietyStock {
+  id            BigInt    @id @default(autoincrement()) @db.BigInt
+  seasonId      String    @map("season_id")
+  seasonName    String    @map("season_name")
+  storeType     StoreType @map("store_type")
+  variety       String
+  totalWeightKg Decimal   @map("total_weight_kg") @db.Decimal(18, 2)
+  soldWeightKg  Decimal   @default(0) @map("sold_weight_kg") @db.Decimal(18, 2)
+  entryCount    Int       @default(0) @map("entry_count")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([seasonId, storeType, variety], map: "store_variety_stocks_season_store_variety_key")
+  @@index([seasonId, storeType])
+  @@index([variety])
+  @@map("store_variety_stocks")
+}
+
+/// Per-season paddy inventory by variety across company/farmer warehouse entries.
+/// This table is managed automatically by warehouse/process flows.
+model PaddyVarietyStock {
+  id             BigInt   @id @default(autoincrement()) @db.BigInt
+  seasonId       String   @map("season_id")
+  seasonName     String   @map("season_name")
+  variety        String
+  companyWeightKg Decimal @default(0) @map("company_weight_kg") @db.Decimal(18, 2)
+  farmerWeightKg  Decimal @default(0) @map("farmer_weight_kg") @db.Decimal(18, 2)
+  totalWeightKg   Decimal @map("total_weight_kg") @db.Decimal(18, 2)
+  entryCount      Int     @default(0) @map("entry_count")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([seasonId, variety], map: "paddy_variety_stocks_season_variety_key")
+  @@index([seasonId])
+  @@index([variety])
+  @@map("paddy_variety_stocks")
+}
+
+/// Per-season rice inventory by variety. Updated automatically by process-rice flows.
+model RiceVarietyStock {
+  id            BigInt   @id @default(autoincrement()) @db.BigInt
+  seasonId      String   @map("season_id")
+  seasonName    String   @map("season_name")
+  variety       String
+  totalWeightKg Decimal  @map("total_weight_kg") @db.Decimal(18, 2)
+  entryCount    Int      @default(0) @map("entry_count")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([seasonId, variety], map: "rice_variety_stocks_season_variety_key")
+  @@index([seasonId])
+  @@index([variety])
+  @@map("rice_variety_stocks")
+}
+
+model StoreVarietySale {
+  id                    BigInt                 @id @default(autoincrement()) @db.BigInt
+  storeType             StoreType              @map("store_type")
+  variety               String
+  seasonId              String                 @map("season_id")
+  seasonName            String                 @map("season_name")
+  buyerCustomerId       BigInt                 @map("buyer_customer_id") @db.BigInt
+  billNo                String                 @map("bill_no")
+  saleDate              DateTime               @map("sale_date")
+  soldWeight            Decimal                @map("sold_weight") @db.Decimal(18, 2)
+  unit                  String
+  soldWeightKg          Decimal                @map("sold_weight_kg") @db.Decimal(18, 2)
+  saleAmount            Decimal                @map("sale_amount") @db.Decimal(18, 2)
+  loadingAmount         Decimal                @default(0) @map("loading_amount") @db.Decimal(18, 2)
+  loadingPaymentChannel RiceSalePaymentChannel? @map("loading_payment_channel")
+  loadingSarafId        BigInt?                @map("loading_saraf_id") @db.BigInt
+  loadingCurrencyId     String?                @map("loading_currency_id")
+  riceBagsAmount        Decimal                @default(0) @map("rice_bags_amount") @db.Decimal(18, 2)
+  bagsPaymentChannel    RiceSalePaymentChannel? @map("bags_payment_channel")
+  bagsSarafId           BigInt?                @map("bags_saraf_id") @db.BigInt
+  bagsCurrencyId        String?                @map("bags_currency_id")
+  paymentType           PaddyPaymentType       @default(paid) @map("payment_type")
+  paidAmount            Decimal                @map("paid_amount") @db.Decimal(18, 2)
+  remainingAmount       Decimal                @default(0) @map("remaining_amount") @db.Decimal(18, 2)
+  paidInCash            Boolean                @default(false) @map("paid_in_cash")
+  paymentChannel        RiceSalePaymentChannel @default(cash) @map("payment_channel")
+  sarafId               BigInt?                @map("saraf_id") @db.BigInt
+  sarafLedgerCurrencyId String?                @map("saraf_ledger_currency_id")
+  notes                 String?
+  createdAt             DateTime               @default(now()) @map("created_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
+
+  season              Season              @relation(fields: [seasonId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  buyerCustomer       Customer            @relation(fields: [buyerCustomerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  saraf               Saraf?              @relation(fields: [sarafId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  loadingSaraf        Saraf?              @relation("StoreVarietySaleLoadingSaraf", fields: [loadingSarafId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  bagsSaraf           Saraf?              @relation("StoreVarietySaleBagsSaraf", fields: [bagsSarafId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sarafLedgerCurrency Currency?           @relation("StoreVarietySaleSarafCurrency", fields: [sarafLedgerCurrencyId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  loadingCurrency     Currency?           @relation("StoreVarietySaleLoadingCurrency", fields: [loadingCurrencyId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  bagsCurrency        Currency?           @relation("StoreVarietySaleBagsCurrency", fields: [bagsCurrencyId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sarafLedgerEntries  SarafLedgerEntry[]  @relation("StoreVarietySaleSarafEntries")
+  cashTransactions    CashTransaction[]   @relation("StoreVarietySaleCashTransactions")
+
+  @@unique([seasonId, billNo])
+  @@index([seasonId, storeType])
+  @@index([variety])
+  @@index([buyerCustomerId])
+  @@index([saleDate])
+  @@index([loadingSarafId])
+  @@index([loadingCurrencyId])
+  @@index([bagsSarafId])
+  @@index([bagsCurrencyId])
+  @@map("store_variety_sales")
+}
+
+model ProcessRiceEntry {
+  id                  BigInt   @id @default(autoincrement()) @db.BigInt
+  sourcePaddyProcessId BigInt  @unique @map("source_paddy_process_id") @db.BigInt
+  processedBillNo     String   @map("processed_bill_no")
+  billNo              String   @map("bill_no")
+  date                DateTime
+  variety             String
+  weight              Decimal  @db.Decimal(18, 2)
+  unit                String
+  processedWeightKg   Decimal  @map("processed_weight_kg") @db.Decimal(18, 2)
+  seasonId            String   @map("season_id")
+  seasonName          String   @map("season_name")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourcePaddyProcess PaddyProcess @relation(fields: [sourcePaddyProcessId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([seasonId])
+  @@index([processedBillNo])
+  @@index([billNo])
+  @@index([date])
+  @@index([variety])
+  @@map("process_rice_entries")
+}
+
+model RiceWarehouse {
+  id              BigInt           @id @default(autoincrement()) @db.BigInt
+  billNo          String           @map("bill_no")
+  stockType       PaddyStockType   @default(company) @map("stock_type")
+  customerId      BigInt?          @map("customer_id") @db.BigInt
+  variety         String
+  quantity        Decimal          @db.Decimal(18, 2)
+  unit            String
+  ownerName       String           @map("owner_name")
+  rate            Decimal          @db.Decimal(18, 2)
+  totalAmount     Decimal          @map("total_amount") @db.Decimal(18, 2)
+  paymentType     PaddyPaymentType @default(remaining) @map("payment_type")
+  paidAmount            Decimal                @default(0) @map("paid_amount") @db.Decimal(18, 2)
+  remainingAmount       Decimal                @map("remaining_amount") @db.Decimal(18, 2)
+  paymentChannel        RiceSalePaymentChannel @default(cash) @map("payment_channel")
+  sarafId               BigInt?                @map("saraf_id") @db.BigInt
+  sarafLedgerCurrencyId String?                @map("saraf_ledger_currency_id")
+  receivedDate          DateTime               @map("received_date")
+  notes                 String?
+  seasonId              String                 @map("season_id")
+  seasonName            String                 @map("season_name")
+  createdAt             DateTime               @default(now()) @map("created_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
+
+  season              Season              @relation(fields: [seasonId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  customer            Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  saraf               Saraf?              @relation(fields: [sarafId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sarafLedgerCurrency Currency?           @relation("RiceWarehouseSarafCurrency", fields: [sarafLedgerCurrencyId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sarafLedgerEntry    SarafLedgerEntry?
+  cashTransaction     CashTransaction?
+  customerLedgerEntry CustomerLedgerEntry?
+
+  @@index([customerId])
+  @@index([seasonId])
+  @@index([receivedDate])
+  @@index([ownerName])
+  @@index([variety])
+  @@index([paymentType])
+  @@index([sarafId])
+  @@index([paymentChannel])
+  @@unique([seasonId, billNo])
+  @@map("rice_warehouses")
+}
+
+model RiceSale {
+  id                      BigInt                 @id @default(autoincrement()) @db.BigInt
+  billNo                  String                 @map("bill_no")
+  buyerCustomerId         BigInt                 @map("buyer_customer_id") @db.BigInt
+  riceVariety             String                 @map("rice_variety")
+  quantity                Decimal                @db.Decimal(18, 2)
+  unit                    String
+  saleDate                DateTime               @map("sale_date")
+  totalAmount             Decimal                @map("total_amount") @db.Decimal(18, 2)
+  loadingAmount           Decimal                @default(0) @map("loading_amount") @db.Decimal(18, 2)
+  loadingPaymentChannel   RiceSalePaymentChannel? @map("loading_payment_channel")
+  loadingSarafId          BigInt?                @map("loading_saraf_id") @db.BigInt
+  loadingCurrencyId       String?                @map("loading_currency_id")
+  riceBagsAmount          Decimal                @default(0) @map("rice_bags_amount") @db.Decimal(18, 2)
+  bagsPaymentChannel      RiceSalePaymentChannel? @map("bags_payment_channel")
+  bagsSarafId             BigInt?                @map("bags_saraf_id") @db.BigInt
+  bagsCurrencyId          String?                @map("bags_currency_id")
+  paymentType             PaddyPaymentType       @map("payment_type")
+  paidAmount              Decimal                @map("paid_amount") @db.Decimal(18, 2)
+  remainingAmount         Decimal                @map("remaining_amount") @db.Decimal(18, 2)
+  paidInCash              Boolean                @default(false) @map("paid_in_cash")
+  paymentChannel          RiceSalePaymentChannel @default(cash) @map("payment_channel")
+  sarafId                 BigInt?                @map("saraf_id") @db.BigInt
+  sarafLedgerCurrencyId   String?                @map("saraf_ledger_currency_id")
+  notes                   String?
+  seasonId                String                 @map("season_id")
+  seasonName              String                 @map("season_name")
+  createdAt               DateTime               @default(now()) @map("created_at")
+  updatedAt               DateTime               @updatedAt @map("updated_at")
+
+  season              Season              @relation(fields: [seasonId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  buyerCustomer       Customer            @relation(fields: [buyerCustomerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  saraf               Saraf?              @relation(fields: [sarafId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  loadingSaraf        Saraf?              @relation("RiceSaleLoadingSaraf", fields: [loadingSarafId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  bagsSaraf           Saraf?              @relation("RiceSaleBagsSaraf", fields: [bagsSarafId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sarafLedgerCurrency Currency?           @relation("RiceSaleSarafCurrency", fields: [sarafLedgerCurrencyId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  loadingCurrency     Currency?           @relation("RiceSaleLoadingCurrency", fields: [loadingCurrencyId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  bagsCurrency        Currency?           @relation("RiceSaleBagsCurrency", fields: [bagsCurrencyId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sarafLedgerEntries  SarafLedgerEntry[]  @relation("RiceSaleSarafEntries")
+  cashTransactions    CashTransaction[]   @relation("RiceSaleCashTransactions")
+
+  @@unique([seasonId, billNo])
+  @@index([buyerCustomerId])
+  @@index([riceVariety])
+  @@index([seasonId])
+  @@index([saleDate])
+  @@index([paymentType])
+  @@index([sarafId])
+  @@index([loadingSarafId])
+  @@index([bagsSarafId])
+  @@index([loadingCurrencyId])
+  @@index([bagsCurrencyId])
+  @@index([paymentChannel])
+  @@map("rice_sales")
+}
+
+model RiceCharity {
+  id            BigInt   @id @default(autoincrement()) @db.BigInt
+  billNo        String   @map("bill_no")
+  recipientName String   @map("recipient_name")
+  riceVariety   String   @map("rice_variety")
+  quantity      Decimal  @db.Decimal(18, 2)
+  unit          String
+  charityDate   DateTime @map("charity_date")
+  notes         String?
+  seasonId      String   @map("season_id")
+  seasonName    String   @map("season_name")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([seasonId, billNo])
+  @@index([riceVariety])
+  @@index([seasonId])
+  @@index([charityDate])
+  @@map("rice_charities")
+}
+
+model FarmerOwnedPaddyWarehouse {
+  id                BigInt         @id @default(autoincrement()) @db.BigInt
+  enteringPaddyId    BigInt?        @unique @map("entering_paddy_id") @db.BigInt
+  billNo            String         @map("bill_no")
+  enteringBillNo    String?        @map("entering_bill_no")
+  stockType         PaddyStockType @default(farmer) @map("stock_type")
+  paddyVariety      String         @map("paddy_variety")
+  paddyQuantity     Decimal        @map("paddy_quantity") @db.Decimal(18, 2)
+  riceVariety       String         @map("rice_variety")
+  riceQuantity      Decimal        @map("rice_quantity") @db.Decimal(18, 2)
+  unit              String
+  ownerName         String         @map("owner_name")
+  receivedDate      DateTime       @map("received_date")
+  notes             String?
+  seasonId          String         @map("season_id")
+  seasonName        String         @map("season_name")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  enteringPaddy EnteringPaddy? @relation("EnteringPaddyToFarmerWarehouse", fields: [enteringPaddyId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  paddyProcesses PaddyProcess[]
+
+  @@index([seasonId])
+  @@index([enteringPaddyId])
+  @@index([billNo])
+  @@index([enteringBillNo])
+  @@index([receivedDate])
+  @@index([ownerName])
+  @@index([paddyVariety])
+  @@index([riceVariety])
+  @@map("farmer_owned_paddy_warehouses")
+}
+
+model EnteringPaddy {
+  id            BigInt                    @id @default(autoincrement()) @db.BigInt
+  paddyOwner    String                    @map("paddy_owner")
+  billNo        String                    @map("bill_no")
+  customerId    BigInt?                   @map("customer_id") @db.BigInt
+  variety       String
+  date          DateTime
+  weight        Decimal                   @db.Decimal(18, 2)
+  weightUnit    EnteringPaddyWeightUnit   @map("weight_unit")
+  totalWeightKg Decimal                   @map("total_weight_kg") @db.Decimal(18, 2)
+  driverName    String                    @map("driver_name")
+  carPlate      String                    @map("car_plate")
+  phoneNo       String                    @map("phone_no")
+  address       String
+  receivedFrom  EnteringPaddyReceivedFrom @map("received_from")
+  trackedInWarehouse Boolean              @default(false) @map("tracked_in_warehouse")
+  trackedStockType    PaddyStockType?     @map("tracked_stock_type")
+  trackedAt           DateTime?           @map("tracked_at")
+  seasonId      String                    @map("season_id")
+  seasonName    String                    @map("season_name")
+  createdAt     DateTime                  @default(now()) @map("created_at")
+  updatedAt     DateTime                  @updatedAt @map("updated_at")
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  companyOwnedPaddyWarehouse CompanyOwnedPaddyWarehouse? @relation("EnteringPaddyToCompanyWarehouse")
+  farmerOwnedPaddyWarehouse FarmerOwnedPaddyWarehouse? @relation("EnteringPaddyToFarmerWarehouse")
+
+  @@index([seasonId])
+  @@index([customerId])
+  @@index([date])
+  @@index([paddyOwner])
+  @@index([billNo])
+  @@index([variety])
+  @@index([receivedFrom])
+  @@index([trackedInWarehouse])
+  @@map("entering_paddies")
+}
+
+model Customer {
+  id         BigInt   @id @default(autoincrement()) @db.BigInt
+  name       String
+  type       CustomerType
+  phoneNo    String   @map("phone_no")
+  address    String
+  notes      String?
+  seasonId   String   @map("season_id")
+  seasonName String   @map("season_name")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  enteringPaddies EnteringPaddy[]
+  ledger CustomerLedger?
+  ledgerEntries CustomerLedgerEntry[]
+  riceWarehouses RiceWarehouse[]
+  riceSales      RiceSale[]
+  storeVarietySales StoreVarietySale[]
+  counterpartyLedgerEntries CustomerLedgerEntry[] @relation("LedgerEntryCounterparty")
+  vendorExpenses Expense[] @relation("ExpenseVendor")
+
+  @@index([seasonId])
+  @@index([type])
+  @@index([name])
+  @@index([phoneNo])
+  @@map("customers")
+}
+
+model CustomerLedger {
+  id           BigInt            @id @default(autoincrement()) @db.BigInt
+  customerId   BigInt            @unique @map("customer_id") @db.BigInt
+  ledgerType   CustomerLedgerType @map("ledger_type")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  entries CustomerLedgerEntry[]
+
+  @@index([customerId])
+  @@index([ledgerType])
+  @@map("customer_ledgers")
+}
+
+model CustomerLedgerEntry {
+  id                            BigInt                  @id @default(autoincrement()) @db.BigInt
+  ledgerId                      BigInt                  @map("ledger_id") @db.BigInt
+  customerId                    BigInt                  @map("customer_id") @db.BigInt
+  entryType                     CustomerLedgerEntryType @map("entry_type")
+  sourceCompanyPaddyWarehouseId BigInt?                 @unique @map("source_company_paddy_warehouse_id") @db.BigInt
+  sourceFarmerPaddyWarehouseId  BigInt?                 @unique @map("source_farmer_paddy_warehouse_id") @db.BigInt
+  sourceRiceWarehouseId         BigInt?                 @unique @map("source_rice_warehouse_id") @db.BigInt
+  amount                        Decimal?                @db.Decimal(18, 2)
+  paymentType                   String?                 @map("payment_type")
+  paidAmount                    Decimal?                @map("paid_amount") @db.Decimal(18, 2)
+  remainingAmount               Decimal?                @map("remaining_amount") @db.Decimal(18, 2)
+  paymentChannel                RiceSalePaymentChannel? @map("payment_channel")
+  sarafId                       BigInt?                 @map("saraf_id") @db.BigInt
+  currencyId                    String?                 @map("currency_id")
+  paddyQuantity                 Decimal?                @map("paddy_quantity") @db.Decimal(18, 2)
+  riceQuantity                  Decimal?                @map("rice_quantity") @db.Decimal(18, 2)
+  riceVariety                   String?                 @map("rice_variety")
+  unit                          String?
+  occurredAt                    DateTime                @map("occurred_at")
+  scheduledFor                  DateTime?               @map("scheduled_for")
+  riceStockFulfilledAt          DateTime?               @map("rice_stock_fulfilled_at")
+  notes                         String?
+  counterpartyCustomerId        BigInt?                 @map("counterparty_customer_id") @db.BigInt
+  linkedLedgerEntryId           BigInt?                 @unique @map("linked_ledger_entry_id") @db.BigInt
+  sourceExpenseId               BigInt?                 @map("source_expense_id") @db.BigInt
+  createdAt                     DateTime                @default(now()) @map("created_at")
+  updatedAt                     DateTime                @updatedAt @map("updated_at")
+
+  ledger            CustomerLedger     @relation(fields: [ledgerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  customer          Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  counterpartyCustomer Customer?       @relation("LedgerEntryCounterparty", fields: [counterpartyCustomerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  linkedLedgerEntry CustomerLedgerEntry? @relation("LedgerEntryPair", fields: [linkedLedgerEntryId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  inverseLinkedEntry CustomerLedgerEntry? @relation("LedgerEntryPair")
+  saraf             Saraf?             @relation(fields: [sarafId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  currency          Currency?          @relation(fields: [currencyId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sarafLedgerEntry SarafLedgerEntry?
+  cashTransaction  CashTransaction?
+  sourceRiceWarehouse RiceWarehouse? @relation(fields: [sourceRiceWarehouseId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceExpense     Expense?       @relation(fields: [sourceExpenseId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([ledgerId])
+  @@index([customerId])
+  @@index([sourceRiceWarehouseId])
+  @@index([sourceExpenseId])
+  @@index([entryType])
+  @@index([occurredAt])
+  @@index([scheduledFor])
+  @@index([riceStockFulfilledAt])
+  @@index([counterpartyCustomerId])
+  @@index([linkedLedgerEntryId])
+  @@map("customer_ledger_entries")
+}
+
+model ExpenseCategory {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  expenses Expense[]
+
+  @@index([isActive])
+  @@map("expense_categories")
+}
+
+model Expense {
+  id              BigInt                  @id @default(autoincrement()) @db.BigInt
+  billNo          String                  @unique @map("bill_no")
+  date            DateTime                @map("date") @db.Date
+  categoryId      String                  @map("category_id")
+  title           String
+  amount          Decimal                 @db.Decimal(18, 2)
+  notes           String?
+  seasonId        String                  @map("season_id")
+  seasonName      String                  @map("season_name")
+  currencyId      String                  @map("currency_id")
+  settlementMode  ExpenseSettlementMode   @default(direct) @map("settlement_mode")
+  vendorId        BigInt?                 @map("vendor_id") @db.BigInt
+  paymentType     String?                 @map("payment_type")
+  paidAmount      Decimal?                @map("paid_amount") @db.Decimal(18, 2)
+  remainingAmount Decimal?                @map("remaining_amount") @db.Decimal(18, 2)
+  paymentChannel  RiceSalePaymentChannel  @default(cash) @map("payment_channel")
+  sarafId         BigInt?                 @map("saraf_id") @db.BigInt
+  createdAt       DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  category           ExpenseCategory        @relation(fields: [categoryId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  season             Season                 @relation(fields: [seasonId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  currency           Currency               @relation(fields: [currencyId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  vendor             Customer?              @relation("ExpenseVendor", fields: [vendorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  saraf              Saraf?                 @relation(fields: [sarafId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  cashTransaction    CashTransaction?
+  sarafLedgerEntry   SarafLedgerEntry?
+  vendorLedgerEntries CustomerLedgerEntry[]
+
+  @@index([seasonId])
+  @@index([categoryId])
+  @@index([date])
+  @@index([currencyId])
+  @@index([settlementMode])
+  @@index([vendorId])
+  @@index([paymentChannel])
+  @@index([sarafId])
+  @@map("expenses")
+}
+
+model Currency {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  isActive  Boolean      @default(true) @map("is_active")
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  sarafLedgerEntries           SarafLedgerEntry[]
+  riceSalesSarafSettlement     RiceSale[]                   @relation("RiceSaleSarafCurrency")
+  riceSalesLoadingCurrency     RiceSale[]                   @relation("RiceSaleLoadingCurrency")
+  riceSalesBagsCurrency        RiceSale[]                   @relation("RiceSaleBagsCurrency")
+  companyPaddySarafSettlements CompanyOwnedPaddyWarehouse[] @relation("CompanyPaddySarafCurrency")
+  riceWarehouseSettlements     RiceWarehouse[]              @relation("RiceWarehouseSarafCurrency")
+  employeeSalarySarafSettlements EmployeeLedgerEntry[]      @relation("EmployeeSalarySarafCurrency")
+  jwaliLedgerEntries             JwaliLedgerEntry[]         @relation("JwaliLedgerEntryCurrency")
+  jwaliPayments                  JwaliPayment[]             @relation("JwaliPaymentCurrency")
+  jwaliPaymentSarafSettlements   JwaliPayment[]             @relation("JwaliPaymentSarafCurrency")
+  storeSalesSarafSettlements   StoreEntry[]                 @relation("StoreSaleSarafCurrency")
+  storeVarietySalesSarafSettlements StoreVarietySale[]      @relation("StoreVarietySaleSarafCurrency")
+  storeVarietySalesLoadingCurrency  StoreVarietySale[]      @relation("StoreVarietySaleLoadingCurrency")
+  storeVarietySalesBagsCurrency     StoreVarietySale[]      @relation("StoreVarietySaleBagsCurrency")
+  cashTransactions                  CashTransaction[]
+  customerLedgerEntries           CustomerLedgerEntry[]
+  expenses                          Expense[]
+
+  @@index([isActive])
+  @@map("currencies")
+}
+
+enum CashTransactionDirection {
+  in
+  out
+
+  @@map("cash_transaction_direction")
+}
+
+model CashTransaction {
+  id         String                   @id @default(cuid())
+  currencyId String                   @map("currency_id")
+  direction  CashTransactionDirection
+  amount     Decimal                  @db.Decimal(18, 2)
+  occurredAt DateTime                 @map("occurred_at")
+  notes      String?
+  seasonId   String?                  @map("season_id")
+  seasonName String?                  @map("season_name")
+  expenseId                       BigInt?  @unique @map("expense_id") @db.BigInt
+  customerLedgerEntryId           BigInt?  @unique @map("customer_ledger_entry_id") @db.BigInt
+  employeeLedgerEntryId           BigInt?  @unique @map("employee_ledger_entry_id") @db.BigInt
+  riceWarehouseId                 BigInt?  @unique @map("rice_warehouse_id") @db.BigInt
+  companyOwnedPaddyWarehouseId    BigInt?  @unique @map("company_owned_paddy_warehouse_id") @db.BigInt
+  riceSaleId                      BigInt?  @map("rice_sale_id") @db.BigInt
+  riceSaleChargeType              RiceSaleChargeType? @map("rice_sale_charge_type")
+  storeVarietySaleId              BigInt?  @map("store_variety_sale_id") @db.BigInt
+  storeVarietySaleChargeType      StoreVarietySaleChargeType? @map("store_variety_sale_charge_type")
+  createdAt                       DateTime @default(now()) @map("created_at")
+  updatedAt                       DateTime @updatedAt @map("updated_at")
+
+  currency                     Currency                    @relation(fields: [currencyId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  season                       Season?                     @relation(fields: [seasonId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  customerLedgerEntry          CustomerLedgerEntry?        @relation(fields: [customerLedgerEntryId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  employeeLedgerEntry          EmployeeLedgerEntry?        @relation(fields: [employeeLedgerEntryId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  riceWarehouse                RiceWarehouse?              @relation(fields: [riceWarehouseId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  companyOwnedPaddyWarehouse   CompanyOwnedPaddyWarehouse? @relation(fields: [companyOwnedPaddyWarehouseId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  riceSale                     RiceSale?                   @relation("RiceSaleCashTransactions", fields: [riceSaleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  storeVarietySale             StoreVarietySale?           @relation("StoreVarietySaleCashTransactions", fields: [storeVarietySaleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  expense                      Expense?                    @relation(fields: [expenseId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([currencyId])
+  @@index([seasonId])
+  @@index([occurredAt])
+  @@index([expenseId])
+  @@index([customerLedgerEntryId])
+  @@index([employeeLedgerEntryId])
+  @@index([riceWarehouseId])
+  @@index([companyOwnedPaddyWarehouseId])
+  @@index([riceSaleId])
+  @@index([storeVarietySaleId])
+  @@map("cash_transactions")
+}
+
+enum VarietyKind {
+  RICE
+  PADDY
+  PROCESS_PRODUCTION
+
+  @@map("variety_kind")
+}
+
+model Variety {
+  id        String       @id @default(cuid())
+  kind      VarietyKind
+  code      String
+  name      String
+  isActive  Boolean      @default(true) @map("is_active")
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  @@unique([kind, code])
+  @@index([kind])
+  @@index([isActive])
+  @@map("varieties")
+}

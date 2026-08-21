@@ -1,0 +1,120 @@
+{
+  "app": {
+    "title": "Yousuf Keyhan MIS",
+    "subtitle": "Admin workspace",
+    "logo_alt": "Logo",
+    "developed_by": "Developed by Mazal — Samiullah Sahir"
+  },
+  "header": {
+    "dashboard": "Dashboard",
+    "season_management": "Season management"
+  },
+  "admin": {
+    "group": "Administration",
+    "users": "Users",
+    "roles": "Roles",
+    "role_permissions": "Role permissions"
+  },
+  "ui": {
+    "toggle_sidebar": "Toggle sidebar",
+    "toggle_sidebar_shortcut": "Toggle sidebar (Ctrl + Space)",
+    "sidebar_sheet_title": "Sidebar",
+    "sidebar_sheet_description": "Displays the mobile sidebar.",
+    "toggle_theme": "Toggle theme",
+    "loading_user": "Loading…",
+    "platform": "Platform"
+  },
+  "season": {
+    "season": "Season management",
+    "new_season": "New season"
+  },
+  "veriety": {
+    "veriety": "Varieties",
+    "rice_veriety": "Rice variety",
+    "paddy_veriety": "Paddy variety",
+    "process_production_type": "Process production type"
+  },
+  "customer": {
+    "customer": "Customer",
+    "customers": "Customers"
+  },
+  "entering_paddy": {
+    "entering_paddy": "Entering paddy",
+    "dashboard": "Dashboard",
+    "records": "Records"
+  },
+  "paddy_warehouse": {
+    "paddy_warehouse": "Paddy warehouse",
+    "dashboard": "Dashboard",
+    "company_owned": "Company owned",
+    "farmer_owned": "Farmer owned"
+  },
+  "paddy_process": {
+    "paddy_process": "Process",
+    "dashboard": "Dashboard",
+    "records": "Records"
+  },
+  "rice_warehouse": {
+    "rice_warehouse": "Rice warehouse",
+    "dashboard": "Dashboard",
+    "rice": "Rice",
+    "process_rice": "Process rice",
+    "rice_sales": "Rice sales",
+    "rice_charity": "Rice charity"
+  },
+  "store": {
+    "store": "Store",
+    "dashboard": "Store dashboard",
+    "short_green": "Short green",
+    "regection": "Rejection",
+    "broken_rice": "Broken rice",
+    "waste": "Waste"
+  },
+  "expenses": {
+    "expenses": "Expenses",
+    "dashboard": "Dashboard",
+    "records": "Records",
+    "categories": "Categories",
+    "currencies": "Currencies"
+  },
+  "cash": {
+    "cash": "Cash",
+    "dashboard": "Dashboard",
+    "records": "Transactions"
+  },
+  "employees": {
+    "employees": "Employees",
+    "dashboard": "Dashboard",
+    "records": "Records"
+  },
+  "investor": {
+    "investors": "Investors",
+    "dashboard": "Dashboard",
+    "records": "Records"
+  },
+  "jwali": {
+    "jwali": "Jwali",
+    "records": "Records"
+  },
+  "sarafi": {
+    "sarafi": "Sarafi",
+    "records": "Records"
+  },
+  "currency": {
+    "currency": "Currency",
+    "currencies": "Currencies"
+  },
+  "reports": {
+    "reports": "Reports",
+    "summary": "Summary"
+  },
+  "dashboard": {
+    "general": "General dashboard"
+  },
+  "group": {
+    "operations": "Operations",
+    "finance": "Finance",
+    "people": "People",
+    "insights": "Insights"
+  }
+}

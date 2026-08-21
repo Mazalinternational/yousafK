@@ -1,0 +1,31 @@
+{
+    "season":  "فصل",
+    "customer":  "مشتری",
+    "entering_paddy":  "ورود شلتوک",
+    "paddy_warehouse":  "گدام شلتوک",
+    "paddy_process":  "فرآوری شلتوک",
+    "process_rice":  "برنج فرآوری",
+    "farmer_owned_paddy_warehouse":  "شلتوک متعلق به دهاقین",
+    "rice_warehouse":  "گدام برنج",
+    "rice_sale":  "فروش برنج",
+    "rice_charity":  "برنج خیراتی",
+    "store":  "Store",
+    "employees":  "کارمندان",
+    "investor":  {
+                    "investor":  "سرمایه‌گذار"
+              },
+    "expenses":  "هزینه‌ها",
+    "jwali":  {
+                  "jwali":  "جوالی"
+              },
+    "sarafi":  {
+                  "saraf":  "Saraf"
+              },
+    "currency":  "واحد پول",
+    "cash_transaction":  "معامله نقدی",
+    "veriety":  "گونه",
+    "short_green":  "Short Green",
+    "regection":  "Regection",
+    "broken_rice":  "Broken Rice",
+    "waste":  "Waste"
+}

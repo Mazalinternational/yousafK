@@ -1,0 +1,23 @@
+{
+  "season": "موسم",
+  "expenses": "لګښتونه",
+  "customer": "مشتری",
+  "veriety": "ډول",
+  "entering_paddy": "د شلتوک ننوت",
+  "paddy_warehouse": "د شلتوک ګودام",
+  "farmer_owned_paddy_warehouse": "د بزګرانو شلتوک",
+  "paddy_process": "د شلتوک پروسس",
+  "process_rice": "د پروسس وریژې",
+  "rice_warehouse": "د وریجو ګودام",
+  "rice_sale": "د وریجو پلور",
+  "rice_charity": "د وریجو خیرات",
+  "currency": "اسعار",
+  "employees": "کارمندان",
+  "cash_transaction": "نغدي معامله",
+  "investor": {
+    "investor": "پانګه‌وال"
+  },
+  "jwali": {
+    "jwali": "جوالي"
+  }
+}

@@ -1,0 +1,120 @@
+{
+  "app": {
+    "title": "سیستم مدیریتی یوسف کیهان",
+    "subtitle": "فضای کاری مدیریت",
+    "logo_alt": "لوگو",
+    "developed_by": "توسعه‌یافته توسط مظل — سمیع‌الله ساحر"
+  },
+  "header": {
+    "dashboard": "داشبورد",
+    "season_management": "مدیریت فصل"
+  },
+  "admin": {
+    "group": "مدیریت سیستم",
+    "users": "کاربران",
+    "roles": "نقش‌ها",
+    "role_permissions": "صلاحیت‌های نقش"
+  },
+  "ui": {
+    "toggle_sidebar": "باز و بسته کردن منوی کناری",
+    "toggle_sidebar_shortcut": "باز و بسته کردن منوی کناری (Ctrl + Space)",
+    "sidebar_sheet_title": "منوی کناری",
+    "sidebar_sheet_description": "منوی موبایل برنامه",
+    "toggle_theme": "تغییر تم",
+    "loading_user": "در حال بارگذاری…",
+    "platform": "سکو"
+  },
+  "season": {
+    "season": "مدیریت فصل",
+    "new_season": "فصل جدید"
+  },
+  "veriety": {
+    "veriety": "گونه‌ها",
+    "rice_veriety": "گونه برنج",
+    "paddy_veriety": "گونه شالی",
+    "process_production_type": "نوع تولید پروسس"
+  },
+  "customer": {
+    "customer": "مشتری",
+    "customers": "مشتریان"
+  },
+  "entering_paddy": {
+    "entering_paddy": "ورود شالی",
+    "dashboard": "داشبورد",
+    "records": "ریکوردها"
+  },
+  "paddy_warehouse": {
+    "paddy_warehouse": "گدام شالی",
+    "dashboard": "داشبورد",
+    "company_owned": "متعلق به شرکت",
+    "farmer_owned": "متعلق به دهاقین"
+  },
+  "paddy_process": {
+    "paddy_process": "فرآوری شلتوک",
+    "dashboard": "داشبورد",
+    "records": "سوابق"
+  },
+  "rice_warehouse": {
+    "rice_warehouse": "گدام برنج",
+    "dashboard": "داشبورد",
+    "rice": "برنج",
+    "process_rice": "برنج فرآوری",
+    "rice_sales": "فروش برنج",
+    "rice_charity": "برنج خیراتی"
+  },
+  "store": {
+    "store": "فروشگاه",
+    "dashboard": "داشبورد فروشگاه",
+    "short_green": "سبز کوتاه",
+    "regection": "رد شده",
+    "broken_rice": "برنج شکسته",
+    "waste": "ضایعات"
+  },
+  "expenses": {
+    "expenses": "مصارف",
+    "dashboard": "داشبورد",
+    "records": "ریکوردها",
+    "categories": "کتگوری‌ها",
+    "currencies": "اسعار"
+  },
+  "cash": {
+    "cash": "نقد",
+    "dashboard": "داشبورد",
+    "records": "معاملات"
+  },
+  "employees": {
+    "employees": "کارمندان",
+    "dashboard": "داشبورد",
+    "records": "ریکوردها"
+  },
+  "investor": {
+    "investors": "سرمایه‌گذاران",
+    "dashboard": "داشبورد",
+    "records": "ریکوردها"
+  },
+  "jwali": {
+    "jwali": "جولی",
+    "records": "ریکوردها"
+  },
+  "sarafi": {
+    "sarafi": "صرافی",
+    "records": "ریکوردها"
+  },
+  "currency": {
+    "currency": "اسعار",
+    "currencies": "اسعار"
+  },
+  "reports": {
+    "reports": "گزارش‌ها",
+    "summary": "خلاصه"
+  },
+  "dashboard": {
+    "general": "داشبورد عمومی"
+  },
+  "group": {
+    "operations": "عملیات",
+    "finance": "مالی",
+    "people": "کارمندان",
+    "insights": "گزارش‌ها"
+  }
+}

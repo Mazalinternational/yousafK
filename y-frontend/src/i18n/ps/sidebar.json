@@ -1,0 +1,120 @@
+{
+  "app": {
+    "title": "د یوسف کیهان مدیریتي سیسټم",
+    "subtitle": "د ادمین کاري ساحه",
+    "logo_alt": "لوګو",
+    "developed_by": "د مظل لخوا جوړ شوی — سمیع‌الله ساحر"
+  },
+  "header": {
+    "dashboard": "ډشبورډ",
+    "season_management": "د موسمونو مدیریت"
+  },
+  "admin": {
+    "group": "اداره",
+    "users": "کاروونکي",
+    "roles": "رولونه",
+    "role_permissions": "د رول صلاحیتونه"
+  },
+  "ui": {
+    "toggle_sidebar": "اړخیز مینو خلاص/تړل",
+    "toggle_sidebar_shortcut": "اړخیز مینو خلاص/تړل (Ctrl + Space)",
+    "sidebar_sheet_title": "اړخیز مینو",
+    "sidebar_sheet_description": "د موبایل اړخیز مینو",
+    "toggle_theme": "تیم بدلول",
+    "loading_user": "پورته کېږي…",
+    "platform": "پلیټفارم"
+  },
+  "season": {
+    "season": "د موسمونو مدیریت",
+    "new_season": "نوی موسم"
+  },
+  "veriety": {
+    "veriety": "ډولونه",
+    "rice_veriety": "د وریجو ډول",
+    "paddy_veriety": "د شلتوک ډول",
+    "process_production_type": "د پروسس تولید ډول"
+  },
+  "customer": {
+    "customer": "پیرودونکی",
+    "customers": "مشتريان"
+  },
+  "entering_paddy": {
+    "entering_paddy": "د شلتوک ننوت",
+    "dashboard": "ډشبورډ",
+    "records": "ریکارډونه"
+  },
+  "paddy_warehouse": {
+    "paddy_warehouse": "د شلتوک ګودام",
+    "dashboard": "ډشبورډ",
+    "company_owned": "د شرکت",
+    "farmer_owned": "د بزګرانو"
+  },
+  "paddy_process": {
+    "paddy_process": "د شلتوک پروسس",
+    "dashboard": "ډشبورډ",
+    "records": "ریکارډونه"
+  },
+  "rice_warehouse": {
+    "rice_warehouse": "د وریجو ګودام",
+    "dashboard": "ډشبورډ",
+    "rice": "وریژې",
+    "process_rice": "د پروسس وریژې",
+    "rice_sales": "د وریجو پلور",
+    "rice_charity": "د وریجو خیرات"
+  },
+  "store": {
+    "store": "پلورنځی",
+    "dashboard": "د پلورنځي ډشبورډ",
+    "short_green": "لنډ شین",
+    "regection": "رد شوی",
+    "broken_rice": "مات وریژې",
+    "waste": "ضایعات"
+  },
+  "expenses": {
+    "expenses": "لګښتونه",
+    "dashboard": "ډشبورډ",
+    "records": "ریکارډونه",
+    "categories": "کټګورۍ",
+    "currencies": "اسعار"
+  },
+  "cash": {
+    "cash": "نغدي",
+    "dashboard": "ډشبورډ",
+    "records": "معاملات"
+  },
+  "employees": {
+    "employees": "کارمندان",
+    "dashboard": "ډشبورډ",
+    "records": "ریکارډونه"
+  },
+  "investor": {
+    "investors": "پانګوال",
+    "dashboard": "ډشبورډ",
+    "records": "ریکارډونه"
+  },
+  "jwali": {
+    "jwali": "جوالي",
+    "records": "ریکارډونه"
+  },
+  "sarafi": {
+    "sarafi": "صرافي",
+    "records": "ریکارډونه"
+  },
+  "currency": {
+    "currency": "اسعار",
+    "currencies": "اسعار"
+  },
+  "reports": {
+    "reports": "راپورونه",
+    "summary": "لنډیز"
+  },
+  "dashboard": {
+    "general": "عمومي ډشبورډ"
+  },
+  "group": {
+    "operations": "عملیات",
+    "finance": "مالي",
+    "people": "خلک",
+    "insights": "راپورونه"
+  }
+}

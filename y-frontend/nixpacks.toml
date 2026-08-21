@@ -1,0 +1,23 @@
+# Coolify / Nixpacks — Vite + React SPA (no custom Dockerfile)
+# Nixpacks auto-detects Vite and serves `dist/` with Caddy after build.
+
+[variables]
+# Large bundles can OOM during `vite build` on small servers.
+NODE_OPTIONS = "--max-old-space-size=4096"
+NPM_CONFIG_UPDATE_NOTIFIER = "false"
+NPM_CONFIG_FUND = "false"
+
+# Vite output directory — both names are needed (Nixpacks regression on some Coolify versions).
+NIXPACKS_SPA_OUT_DIR = "dist"
+NIXPACKS_SPA_OUTPUT_DIR = "dist"
+
+# Caddy listens on this port in production (match Coolify "Port Exposes").
+PORT = "3000"
+
+# Coolify may inject NODE_ENV=production at build time, which makes `npm ci`
+# skip devDependencies (vite, typescript, etc.). Force them for the build.
+[phases.install]
+cmds = ["npm ci --include=dev"]
+
+[phases.build]
+cmds = ["npm run build"]

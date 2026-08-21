@@ -1,0 +1,31 @@
+{
+    "season":  "Season",
+    "customer":  "Customer",
+    "entering_paddy":  "Entering Paddy",
+    "paddy_warehouse":  "Paddy Warehouse",
+    "paddy_process":  "Paddy Process",
+    "process_rice":  "Process Rice",
+    "farmer_owned_paddy_warehouse":  "Farmer Owned Paddy",
+    "rice_warehouse":  "Rice Warehouse",
+    "rice_sale":  "Rice sale",
+    "rice_charity":  "Rice charity",
+    "store":  "Store",
+    "employees":  "Employees",
+    "investor":  {
+                    "investor":  "Investor"
+              },
+    "expenses":  "Expenses",
+    "jwali":  {
+                  "jwali":  "Jwali"
+              },
+    "sarafi":  {
+                  "saraf":  "Saraf"
+              },
+    "currency":  "Currency",
+    "cash_transaction":  "Cash transaction",
+    "veriety":  "Veriety",
+    "short_green":  "Short Green",
+    "regection":  "Regection",
+    "broken_rice":  "Broken Rice",
+    "waste":  "Waste"
+}
