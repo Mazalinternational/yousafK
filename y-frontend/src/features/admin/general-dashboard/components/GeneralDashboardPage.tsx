@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/table";
 import { sectionVariants, staggerContainerVariants } from "@/lib/motion";
 import { dateFormatter } from "@/utils/dataFormatters";
-import { formatAvailableStockFromKg } from "@/utils/weightUnit";
+import { formatAvailableStockFromKg, formatWeightFromKg, stockValueClassName } from "@/utils/weightUnit";
 import { getDisplayLocale } from "@/utils/displayLocale";
 import { useGeneralDashboard } from "../hooks/useGeneralDashboard";
 import { buildCurrencyCashFlowRows } from "../utils/buildCurrencyCashFlow";
@@ -96,6 +96,10 @@ export function GeneralDashboardPage() {
   const availablePaddyStockKg =
     Number(data.paddyWarehouse?.companyOwned.availableQuantityKg ?? 0) +
     Number(data.paddyWarehouse?.farmerOwned.availableQuantityKg ?? 0);
+
+  const riceBookStockKg =
+    Number(data.riceWarehouse?.summary.totalInKg ?? 0) -
+    Number(data.riceWarehouse?.summary.totalOutKg ?? 0);
 
   const sectionGroups: SectionGroup[] = [
     {
@@ -193,10 +197,8 @@ export function GeneralDashboardPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardDescription>{t("common:current_stock_balance")}</CardDescription>
-                <CardTitle className="text-xl">
-                  {formatAvailableStockFromKg(data.riceWarehouse?.summary.currentStockKg ?? 0, t, {
-                    locale,
-                  })}
+                <CardTitle className={`text-xl ${stockValueClassName(riceBookStockKg) ?? ""}`}>
+                  {formatWeightFromKg(riceBookStockKg, t)}
                 </CardTitle>
                 <p className="text-xs text-muted-foreground">{t("sidebar:rice_warehouse:rice_warehouse")}</p>
               </CardHeader>

@@ -414,6 +414,7 @@ export class RiceWarehouseService {
         select: {
           id: true,
           billNo: true,
+          buyerCustomerId: true,
           riceVariety: true,
           quantity: true,
           unit: true,
@@ -421,6 +422,8 @@ export class RiceWarehouseService {
           oversoldWeightKg: true,
           saleDate: true,
           totalAmount: true,
+          loadingAmount: true,
+          riceBagsAmount: true,
           paidAmount: true,
           remainingAmount: true,
           paymentType: true,
@@ -519,27 +522,8 @@ export class RiceWarehouseService {
       new Prisma.Decimal(0),
     );
 
-    const buyerSaleMoneyTotals = riceSales.reduce(
-      (
-        acc: {
-          total: Prisma.Decimal;
-          paid: Prisma.Decimal;
-          remaining: Prisma.Decimal;
-        },
-        entry: any,
-      ) => ({
-        total: acc.total.plus(new Prisma.Decimal(entry.totalAmount)),
-        paid: acc.paid.plus(new Prisma.Decimal(entry.paidAmount)),
-        remaining: acc.remaining.plus(
-          new Prisma.Decimal(entry.remainingAmount),
-        ),
-      }),
-      {
-        total: new Prisma.Decimal(0),
-        paid: new Prisma.Decimal(0),
-        remaining: new Prisma.Decimal(0),
-      },
-    );
+    const buyerSaleMoneyTotals =
+      await this.computeBuyerSaleMoneyTotals(riceSales);
 
     const riceOutTotals = riceOutTotalsSales
       .plus(riceOutTotalsCharity)
@@ -1347,6 +1331,130 @@ export class RiceWarehouseService {
       : 1;
 
     return `${prefix}${nextNumber}`;
+  }
+
+  /**
+   * Buyer sales money cards must include later collections from the buyer
+   * ledger (cash or Saraf), not only amounts paid at sale time on rice_sales.
+   * Later payments are applied to each buyer's rice remaining (capped), so
+   * store-sale collections for the same buyer are not over-attributed to rice.
+   */
+  private async computeBuyerSaleMoneyTotals(
+    riceSales: Array<{
+      buyerCustomerId: bigint;
+      totalAmount: Prisma.Decimal | string | number;
+      loadingAmount?: Prisma.Decimal | string | number | null;
+      riceBagsAmount?: Prisma.Decimal | string | number | null;
+      paidAmount: Prisma.Decimal | string | number;
+      remainingAmount: Prisma.Decimal | string | number;
+    }>,
+  ) {
+    let total = new Prisma.Decimal(0);
+    let paidAtSale = new Prisma.Decimal(0);
+    const remainingByBuyer = new Map<string, Prisma.Decimal>();
+
+    for (const entry of riceSales) {
+      const invoice = new Prisma.Decimal(entry.totalAmount)
+        .plus(entry.loadingAmount ?? 0)
+        .plus(entry.riceBagsAmount ?? 0);
+      total = total.plus(invoice);
+      paidAtSale = paidAtSale.plus(new Prisma.Decimal(entry.paidAmount));
+
+      const buyerKey = String(entry.buyerCustomerId);
+      remainingByBuyer.set(
+        buyerKey,
+        (remainingByBuyer.get(buyerKey) ?? new Prisma.Decimal(0)).plus(
+          new Prisma.Decimal(entry.remainingAmount),
+        ),
+      );
+    }
+
+    const buyerIds = [...remainingByBuyer.keys()].map((id) => BigInt(id));
+    let laterApplied = new Prisma.Decimal(0);
+
+    if (buyerIds.length > 0) {
+      const laterEntries = await this.prisma.customerLedgerEntry.findMany({
+        where: {
+          customerId: { in: buyerIds },
+          entryType: {
+            in: [
+              'buyer_payment',
+              'buyer_credit',
+              'buyer_payment_on_behalf',
+              'buyer_payment_received_on_behalf',
+            ],
+          },
+        },
+        select: {
+          customerId: true,
+          entryType: true,
+          amount: true,
+          counterpartyCustomerId: true,
+          paymentChannel: true,
+        },
+      });
+
+      const laterByBuyer = new Map<string, Prisma.Decimal>();
+
+      for (const entry of laterEntries) {
+        const amount = new Prisma.Decimal(entry.amount ?? 0);
+        if (!amount.greaterThan(0) && !amount.lessThan(0)) {
+          continue;
+        }
+
+        const buyerKey = String(entry.customerId);
+        let delta = new Prisma.Decimal(0);
+
+        if (entry.entryType === 'buyer_credit') {
+          delta = amount;
+        } else if (entry.entryType === 'buyer_payment_on_behalf') {
+          delta = amount;
+        } else if (entry.entryType === 'buyer_payment_received_on_behalf') {
+          delta = amount.negated();
+        } else if (
+          entry.entryType === 'buyer_payment' &&
+          !entry.counterpartyCustomerId &&
+          (entry.paymentChannel === 'cash' || entry.paymentChannel === 'saraf')
+        ) {
+          delta = amount;
+        } else if (
+          entry.entryType === 'buyer_payment' &&
+          entry.counterpartyCustomerId
+        ) {
+          // Payment received on behalf (legacy shape): increases what this buyer owes.
+          delta = amount.negated();
+        }
+
+        if (delta.equals(0)) {
+          continue;
+        }
+
+        laterByBuyer.set(
+          buyerKey,
+          (laterByBuyer.get(buyerKey) ?? new Prisma.Decimal(0)).plus(delta),
+        );
+      }
+
+      for (const [buyerKey, riceRemaining] of remainingByBuyer.entries()) {
+        const later = laterByBuyer.get(buyerKey) ?? new Prisma.Decimal(0);
+        if (later.greaterThan(0)) {
+          laterApplied = laterApplied.plus(
+            Prisma.Decimal.min(later, riceRemaining),
+          );
+        } else if (later.lessThan(0)) {
+          // Extra debt from received-on-behalf increases still-to-collect.
+          laterApplied = laterApplied.plus(later);
+        }
+      }
+    }
+
+    const paid = paidAtSale.plus(Prisma.Decimal.max(laterApplied, 0));
+    const remaining = Prisma.Decimal.max(
+      total.minus(paidAtSale).minus(laterApplied),
+      0,
+    );
+
+    return { total, paid, remaining };
   }
 
   private normalizePaymentChannel(paymentChannel?: string | null) {

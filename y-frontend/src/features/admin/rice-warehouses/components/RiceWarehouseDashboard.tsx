@@ -5,11 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { sectionVariants, staggerContainerVariants } from "@/lib/motion";
 import { dateFormatter } from "@/utils/dataFormatters";
-import {
-  formatAvailableStockFromKg,
-  formatWeightFromKg,
-  stockValueClassName,
-} from "@/utils/weightUnit";
+import { formatWeightFromKg, stockValueClassName } from "@/utils/weightUnit";
 import { useRiceWarehouseDashboard } from "../hooks";
 
 function formatNumber(value: string | number, options?: Intl.NumberFormatOptions) {
@@ -31,7 +27,7 @@ export function RiceWarehouseDashboard() {
   const { t } = useTranslation();
   const { data, isLoading, error } = useRiceWarehouseDashboard();
   const fmtW = (kg: string | number) => formatWeightFromKg(kg, t);
-  const fmtStockAvail = (kg: string | number) => formatAvailableStockFromKg(kg, t);
+  const bookStockKg = Number(data?.summary.totalInKg ?? 0) - Number(data?.summary.totalOutKg ?? 0);
 
   if (isLoading) {
     return (
@@ -116,8 +112,8 @@ export function RiceWarehouseDashboard() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>{t("common:current_stock_balance")}</CardDescription>
-              <CardTitle className={`text-2xl ${stockValueClassName(data.summary.currentStockKg) ?? ""}`}>
-                {fmtStockAvail(data.summary.currentStockKg)}
+              <CardTitle className={`text-2xl ${stockValueClassName(bookStockKg) ?? ""}`}>
+                {fmtW(bookStockKg)}
               </CardTitle>
             </CardHeader>
           </Card>
@@ -217,8 +213,8 @@ export function RiceWarehouseDashboard() {
               </div>
               <div className="rounded-lg border p-4">
                 <p className="text-sm text-muted-foreground">{t("common:current_stock_balance")}</p>
-                <p className={`mt-1 text-xl font-semibold ${stockValueClassName(data.summary.currentStockKg) ?? ""}`}>
-                  {fmtStockAvail(data.summary.currentStockKg)}
+                <p className={`mt-1 text-xl font-semibold ${stockValueClassName(bookStockKg) ?? ""}`}>
+                  {fmtW(bookStockKg)}
                 </p>
               </div>
               <div className="rounded-lg border p-4">
@@ -273,7 +269,7 @@ export function RiceWarehouseDashboard() {
                           <td className="whitespace-nowrap px-3 py-3 text-start">{fmtW(item.farmerRiceReturnedKg)}</td>
                           <td className="whitespace-nowrap px-3 py-3 text-start font-medium">{fmtW(item.farmerRiceToIssueKg)}</td>
                           <td className={`whitespace-nowrap px-3 py-3 text-start font-medium ${stockValueClassName(item.currentStockKg) ?? ""}`}>
-                            {fmtStockAvail(item.currentStockKg)}
+                            {fmtW(item.currentStockKg)}
                           </td>
                         </tr>
                       ))
