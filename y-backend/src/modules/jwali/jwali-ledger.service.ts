@@ -614,18 +614,18 @@ export class JwaliLedgerService {
     const newDate =
       dto.paymentDate !== undefined
         ? this.requireDate(dto.paymentDate, 'paymentDate')
-        : (current.occurredAt as string);
+        : this.requireDate(String(current.occurredAt), 'paymentDate');
     const newNotes =
       dto.notes !== undefined
         ? dto.notes?.trim() || null
         : (current.notes ?? null);
 
     const oldAmount = this.parsePositiveDecimal(current.amount, 'amount');
-    const oldDate = current.occurredAt as string;
+    const oldDate = this.requireDate(String(current.occurredAt), 'paymentDate');
     const paymentChannel = this.normalizePaymentChannel(current.paymentChannel);
 
     const detailRows = await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw(Prisma.sql`
+      await tx.$executeRaw(Prisma.sql`
         UPDATE "jwali_payments"
         SET
           "amount" = ${newAmount},

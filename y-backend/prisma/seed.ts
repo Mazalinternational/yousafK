@@ -100,7 +100,19 @@ const ALL_PERMISSIONS = [
   ...CUSTOMER_TYPE_PERMISSIONS,
 ];
 
-async function syncRolePermissions(prisma: PrismaClient, roleId: string, keys: string[]) {
+async function syncRolePermissions(
+  prisma: PrismaClient,
+  roleId: string,
+  keys: string[],
+) {
+  const role = await prisma.role.findUnique({
+    where: { id: roleId },
+    select: { permissionsCustomizedAt: true },
+  });
+  if (!role || role.permissionsCustomizedAt) {
+    return;
+  }
+
   const perms = await prisma.permission.findMany({
     where: { key: { in: keys } },
     select: { id: true },
@@ -117,8 +129,7 @@ async function syncRolePermissions(prisma: PrismaClient, roleId: string, keys: s
       skipDuplicates: true,
     });
   }
-  // Never delete existing grants. Re-running seed used to reset manager/staff
-  // back to the default set and wipe permissions assigned in the admin UI.
+  // Additive only, and skipped entirely once an admin customizes the role.
 }
 
 async function main() {

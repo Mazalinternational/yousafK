@@ -116,9 +116,15 @@ let refreshInFlight: Promise<boolean> | null = null;
 const waiters: Resolver[] = [];
 
 let onUnauthorized: (() => void) | null = null;
+let onSessionRefreshed: (() => void) | null = null;
 
 export function setOnUnauthorized(handler: (() => void) | null) {
   onUnauthorized = handler;
+}
+
+/** Called after a silent /auth/refresh succeeds so UI permissions stay in sync. */
+export function setOnSessionRefreshed(handler: (() => void) | null) {
+  onSessionRefreshed = handler;
 }
 
 async function performRefresh(): Promise<boolean> {
@@ -129,6 +135,7 @@ async function performRefresh(): Promise<boolean> {
         withCredentials: true,
       });
       captureCsrfFromResponse(res);
+      onSessionRefreshed?.();
       return true;
     } catch {
       return false;

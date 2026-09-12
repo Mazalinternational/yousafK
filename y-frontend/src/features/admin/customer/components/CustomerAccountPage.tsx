@@ -718,6 +718,10 @@ export function CustomerAccountPage() {
       label: t("common:total_store_weight_sold_kg"),
       value: formatWeightFromKg(data.ledger.summary.totalStoreWeightSoldKg ?? "0", t),
     },
+    {
+      label: t("common:total_oversold_kg"),
+      value: formatWeightFromKg(data.ledger.summary.totalOversoldKg ?? "0", t),
+    },
   ];
   const isReceivableBuyer = isBuyer;
   const showPaymentColumn = isSeller || isReceivableBuyer || isVendor || isDebtor;
@@ -2090,6 +2094,9 @@ export function CustomerAccountPage() {
                       <SelectItem value="process_production_store_sale">
                         {t("common:ledger_entry_store_variety_sale")}
                       </SelectItem>
+                      <SelectItem value="buyer_sale_oversell">
+                        {t("common:ledger_entry_sale_oversell")}
+                      </SelectItem>
                       <SelectItem value="buyer_payment">
                         {t("common:ledger_entry_buyer_payment")}
                       </SelectItem>
@@ -2273,6 +2280,8 @@ export function CustomerAccountPage() {
                               ? t("common:ledger_entry_company_payment_received_on_behalf")
                               : entry.entryType === "process_production_store_sale"
                                 ? t("common:ledger_entry_store_variety_sale")
+                                : entry.entryType === "buyer_sale_oversell"
+                                  ? t("common:ledger_entry_sale_oversell")
                                 : getCustomerLedgerEntryLabel(entry, t)}
                         </TableCell>
                         <TableCell>{dateFormatter(entry.occurredAt)}</TableCell>
@@ -2319,6 +2328,17 @@ export function CustomerAccountPage() {
                                 t,
                               )
                             : "-"}
+                          {Number(entry.oversoldQuantity ?? 0) > 0 &&
+                          entry.entryType !== "buyer_sale_oversell" ? (
+                            <p className="text-xs text-amber-700">
+                              {t("common:sale_oversold_weight")}:{" "}
+                              {formatQuantityWithUnit(
+                                entry.oversoldQuantity ?? "0",
+                                entry.unit ?? undefined,
+                                t,
+                              )}
+                            </p>
+                          ) : null}
                         </TableCell>
                         <TableCell>{entry.riceVariety || "-"}</TableCell>
                         {isPaddyFarmer ? (

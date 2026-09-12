@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { authApi } from "@/api/auth.api";
-import { clearCsrfTokenCache, setOnUnauthorized } from "@/api/client";
+import { clearCsrfTokenCache, setOnSessionRefreshed, setOnUnauthorized } from "@/api/client";
 import { AuthContext } from "./AuthContext";
 import { markSkipLoginReturn } from "./post-login-redirect";
 import type { AuthState, AuthUser } from "./types";
@@ -33,7 +33,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => setOnUnauthorized(null);
   }, [handleUnauthenticated]);
 
-  // Silent restore on mount. React 18 StrictMode mounts/unmounts twice in dev,
+  // Silent restore on mount.
   // so we rely on a local `cancelled` flag instead of a global "run once" ref.
   useEffect(() => {
     let cancelled = false;
@@ -86,6 +86,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       handleUnauthenticated();
     }
   }, [handleUnauthenticated]);
+
+  useEffect(() => {
+    setOnSessionRefreshed(refresh);
+    return () => setOnSessionRefreshed(null);
+  }, [refresh]);
 
   const value = useMemo<AuthState>(() => {
     const permSet = new Set(user?.permissions ?? []);

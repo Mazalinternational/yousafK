@@ -19,6 +19,7 @@ export const EmployeeSchema = z.object({
   joinDate: z.string(),
   monthlySalary: z.union([z.string(), z.number()]).transform(String),
   status: z.enum(EMPLOYEE_STATUS_OPTIONS),
+  inactiveDate: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
   seasonId: z.string(),
   seasonName: z.string(),

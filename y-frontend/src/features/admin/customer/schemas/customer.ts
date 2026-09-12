@@ -83,6 +83,7 @@ export const CustomerLedgerEntrySchema = z.object({
     "seller_debit",
     "seller_credit",
     "process_production_store_sale",
+    "buyer_sale_oversell",
     "vendor_expense",
     "vendor_payment",
     "debtor_disbursement",
@@ -108,6 +109,8 @@ export const CustomerLedgerEntrySchema = z.object({
   paddyQuantity: z.string().nullable().optional(),
   paddyVariety: z.string().nullable().optional(),
   riceQuantity: z.string().nullable().optional(),
+  fromStockQuantity: z.string().nullable().optional(),
+  oversoldQuantity: z.string().nullable().optional(),
   riceVariety: z.string().nullable().optional(),
   unit: z.string().nullable().optional(),
   occurredAt: z.string(),
@@ -195,6 +198,7 @@ export const CustomerAccountSummarySchema = z.object({
   totalRicePurchasedKg: z.string().optional(),
   storeSaleCount: z.string().optional(),
   totalStoreWeightSoldKg: z.string().optional(),
+  totalOversoldKg: z.string().optional(),
   totalSaleAmount: z.string().nullable().optional(),
 });
 

@@ -69,7 +69,9 @@ export function StoreVarietySalesSection({
     const baseKg = Number(
       pooled ? (stockData?.varieties[0]?.availableWeightKg ?? 0) : 0,
     );
-    const currentSaleKg = Number(editingSale?.soldWeightKg ?? 0);
+    const currentSaleKg = Number(
+      editingSale?.fromStockWeightKg ?? editingSale?.soldWeightKg ?? 0,
+    );
 
     if (!editingSale || Number.isNaN(baseKg) || Number.isNaN(currentSaleKg)) {
       return pooled ? (stockData?.varieties[0]?.availableWeightKg ?? "0") : "0";

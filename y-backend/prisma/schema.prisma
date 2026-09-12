@@ -64,13 +64,15 @@ model User {
 }
 
 model Role {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  slug        String   @unique
-  description String?
-  isSystem    Boolean  @default(false) @map("is_system")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id                       String    @id @default(cuid())
+  name                     String    @unique
+  slug                     String    @unique
+  description              String?
+  isSystem                 Boolean   @default(false) @map("is_system")
+  /** Set when an admin saves permissions in the UI — blocks seed/sync from re-granting defaults. */
+  permissionsCustomizedAt  DateTime? @map("permissions_customized_at")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
 
   users       UserRole[]
   permissions RolePermission[]
@@ -562,6 +564,7 @@ model Employee {
   joinDate      DateTime @map("join_date")
   monthlySalary Decimal  @map("monthly_salary") @db.Decimal(18, 2)
   status        String
+  inactiveDate  DateTime? @map("inactive_date")
   notes         String?
   seasonId      String   @map("season_id")
   seasonName    String   @map("season_name")
@@ -825,6 +828,8 @@ model StoreVarietySale {
   soldWeight            Decimal                @map("sold_weight") @db.Decimal(18, 2)
   unit                  String
   soldWeightKg          Decimal                @map("sold_weight_kg") @db.Decimal(18, 2)
+  fromStockWeightKg     Decimal                @default(0) @map("from_stock_weight_kg") @db.Decimal(18, 2)
+  oversoldWeightKg      Decimal                @default(0) @map("oversold_weight_kg") @db.Decimal(18, 2)
   saleAmount            Decimal                @map("sale_amount") @db.Decimal(18, 2)
   loadingAmount         Decimal                @default(0) @map("loading_amount") @db.Decimal(18, 2)
   loadingPaymentChannel RiceSalePaymentChannel? @map("loading_payment_channel")
@@ -945,6 +950,8 @@ model RiceSale {
   riceVariety             String                 @map("rice_variety")
   quantity                Decimal                @db.Decimal(18, 2)
   unit                    String
+  fromStockWeightKg       Decimal                @default(0) @map("from_stock_weight_kg") @db.Decimal(18, 2)
+  oversoldWeightKg        Decimal                @default(0) @map("oversold_weight_kg") @db.Decimal(18, 2)
   saleDate                DateTime               @map("sale_date")
   totalAmount             Decimal                @map("total_amount") @db.Decimal(18, 2)
   loadingAmount           Decimal                @default(0) @map("loading_amount") @db.Decimal(18, 2)

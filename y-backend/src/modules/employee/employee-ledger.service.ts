@@ -27,6 +27,8 @@ import { UpdateSalaryLedgerEntryDto } from './dto/update-salary-ledger-entry.dto
 import {
   calculateOutstandingPayable,
   calculatePayableForShamsiMonth,
+  resolveAccrualEndMonthKey,
+  resolveEmploymentEndDate,
   resolvePaymentStatus,
 } from './employee-salary.util.js';
 
@@ -52,6 +54,7 @@ export class EmployeeLedgerService {
         e."join_date" AS "joinDate",
         e."monthly_salary"::text AS "monthlySalary",
         e."status" AS "status",
+        e."inactive_date" AS "inactiveDate",
         e."notes" AS "notes",
         e."season_id" AS "seasonId",
         e."season_name" AS "seasonName",
@@ -123,6 +126,7 @@ export class EmployeeLedgerService {
         joinDate: employee.joinDate,
         monthlySalary: new Prisma.Decimal(employee.monthlySalary).toFixed(2),
         status: employee.status,
+        inactiveDate: employee.inactiveDate,
         notes: employee.notes,
         seasonId: employee.seasonId,
         seasonName: employee.seasonName,
@@ -144,6 +148,11 @@ export class EmployeeLedgerService {
           new Prisma.Decimal(employee.monthlySalary),
           employee.joinDate,
           serializedEntries,
+          {
+            status: employee.status,
+            inactiveDate: employee.inactiveDate,
+            updatedAt: employee.updatedAt,
+          },
         ),
         entries: serializedEntries,
       },
@@ -307,6 +316,13 @@ export class EmployeeLedgerService {
     }
 
     const entryType = entryTypeRaw;
+
+    if (
+      entryType === 'salary_payment' ||
+      entryType === 'salary_deduction'
+    ) {
+      this.assertEmployeeCanAccrueSalary(employee);
+    }
 
     const amount =
       dto.amount !== undefined
@@ -568,15 +584,34 @@ export class EmployeeLedgerService {
       return sum.plus(new Prisma.Decimal(entry.amount));
     }, new Prisma.Decimal(0));
 
+    const employmentEndDate = resolveEmploymentEndDate(
+      employee.status,
+      employee.inactiveDate,
+      employee.updatedAt,
+    );
     const calculation = calculatePayableForShamsiMonth(
       new Prisma.Decimal(employee.monthlySalary),
       employee.joinDate,
       salaryMonth,
       deductionsAmount,
+      undefined,
+      employmentEndDate,
     );
 
+    const accrualEndMonthKey = resolveAccrualEndMonthKey(
+      employee.status,
+      employee.inactiveDate,
+      undefined,
+      employee.updatedAt,
+    );
+    const isAfterEmployment =
+      compareShamsiMonthKeys(monthKey, accrualEndMonthKey) > 0;
+    const payableAmount = isAfterEmployment
+      ? new Prisma.Decimal(0)
+      : calculation.payableAmount;
+
     const remainingAmount = Prisma.Decimal.max(
-      calculation.payableAmount.minus(paidAmount),
+      payableAmount.minus(paidAmount),
       0,
     );
     const isPrepaid =
@@ -587,7 +622,7 @@ export class EmployeeLedgerService {
       shamsiMonthKey: monthKey,
       shamsiMonthLabel: formatShamsiMonthLabel(salaryMonth),
       monthlySalary: new Prisma.Decimal(employee.monthlySalary).toFixed(2),
-      payableAmount: calculation.payableAmount.toFixed(2),
+      payableAmount: payableAmount.toFixed(2),
       paidAmount: paidAmount.toFixed(2),
       deductionsAmount: deductionsAmount.toFixed(2),
       remainingAmount: remainingAmount.toFixed(2),
@@ -607,6 +642,7 @@ export class EmployeeLedgerService {
   ) {
     const employee = await this.requireEmployee(employeeId);
     await this.seasonService.assertSeasonIsEditableById(employee.seasonId);
+    this.assertEmployeeCanAccrueSalary(employee);
     const ledger = await this.requireLedger(employee.id);
 
     const amount = this.parsePositiveDecimal(dto.amount, 'amount');
@@ -860,11 +896,27 @@ export class EmployeeLedgerService {
       salaryMonth: string;
       isAdvance?: boolean;
     }>,
+    employment: {
+      status: string;
+      inactiveDate?: string | Date | null;
+      updatedAt?: string | Date | null;
+    },
   ) {
     const currentMonthKey = currentShamsiMonthKey();
+    const employmentEndDate = resolveEmploymentEndDate(
+      employment.status,
+      employment.inactiveDate,
+      employment.updatedAt,
+    );
+    const accrualEndMonthKey = resolveAccrualEndMonthKey(
+      employment.status,
+      employment.inactiveDate,
+      undefined,
+      employment.updatedAt,
+    );
     const monthKeys = this.collectSalaryMonthKeys(
       entries,
-      currentMonthKey,
+      accrualEndMonthKey,
       joinDate,
     );
 
@@ -902,29 +954,33 @@ export class EmployeeLedgerService {
         joinDate,
         shamsiMonthStartGregorian(monthKey),
         deductionsForMonth,
+        undefined,
+        employmentEndDate,
       ).payableAmount;
 
       totalPayableAllMonths = totalPayableAllMonths.plus(payableForMonth);
       totalPaidAllMonths = totalPaidAllMonths.plus(paidForMonth);
 
-      const isHireThroughNow =
+      const isHireThroughAccrualEnd =
         compareShamsiMonthKeys(monthKey, joinMonthKey) >= 0 &&
-        compareShamsiMonthKeys(monthKey, currentMonthKey) <= 0;
+        compareShamsiMonthKeys(monthKey, accrualEndMonthKey) <= 0;
 
-      if (isHireThroughNow) {
+      if (isHireThroughAccrualEnd) {
         totalPayableFromHire = totalPayableFromHire.plus(payableForMonth);
         totalPaidFromHire = totalPaidFromHire.plus(paidForMonth);
         deductionsFromHire = deductionsFromHire.plus(deductionsForMonth);
       }
 
       if (monthKey === currentMonthKey) {
-        grossPayableThisMonth = payableForMonth;
-        paidThisMonth = paidForMonth;
-        deductionsThisMonth = deductionsForMonth;
-        weOweEmployeeThisMonth = Prisma.Decimal.max(
-          paidForMonth.minus(payableForMonth),
-          0,
-        );
+        if (compareShamsiMonthKeys(currentMonthKey, accrualEndMonthKey) <= 0) {
+          grossPayableThisMonth = payableForMonth;
+          paidThisMonth = paidForMonth;
+          deductionsThisMonth = deductionsForMonth;
+          weOweEmployeeThisMonth = Prisma.Decimal.max(
+            paidForMonth.minus(payableForMonth),
+            0,
+          );
+        }
       }
     }
 
@@ -987,12 +1043,12 @@ export class EmployeeLedgerService {
 
   private collectSalaryMonthKeys(
     entries: Array<{ salaryMonth: string }>,
-    currentMonthKey: string,
+    accrualEndMonthKey: string,
     joinDate: string | Date,
   ) {
     const joinMonthKey = shamsiMonthKey(joinDate);
     const monthKeys = new Set<string>(
-      shamsiMonthKeysInclusive(joinMonthKey, currentMonthKey),
+      shamsiMonthKeysInclusive(joinMonthKey, accrualEndMonthKey),
     );
 
     // Keep any payment months outside the hire→now range (e.g. advance months).
@@ -1001,7 +1057,7 @@ export class EmployeeLedgerService {
     }
 
     if (monthKeys.size === 0) {
-      monthKeys.add(currentMonthKey);
+      monthKeys.add(accrualEndMonthKey);
     }
 
     return monthKeys;
@@ -1072,9 +1128,25 @@ export class EmployeeLedgerService {
         salaryMonth: entry.salaryMonth,
         occurredAt: entry.occurredAt,
       })),
+      {
+        status: employee.status,
+        inactiveDate: employee.inactiveDate,
+        updatedAt: employee.updatedAt,
+      },
     );
 
     return new Prisma.Decimal(summary.employeeCreditBalance);
+  }
+
+  private assertEmployeeCanAccrueSalary(employee: {
+    status: string;
+    name: string;
+  }) {
+    if (employee.status?.trim().toLowerCase() === 'inactive') {
+      throw new BadRequestException(
+        `Cannot add salary entries for inactive employee "${employee.name}"`,
+      );
+    }
   }
 
   private async requireEmployee(employeeId: string) {
@@ -1083,6 +1155,9 @@ export class EmployeeLedgerService {
         "id",
         "employee_no" AS "employeeNo",
         "name" AS "name",
+        "status" AS "status",
+        "inactive_date" AS "inactiveDate",
+        "updated_at" AS "updatedAt",
         "season_id" AS "seasonId",
         "season_name" AS "seasonName",
         "join_date" AS "joinDate",
@@ -1100,6 +1175,9 @@ export class EmployeeLedgerService {
       id: BigInt(rows[0].id),
       employeeNo: rows[0].employeeNo as string,
       name: rows[0].name as string,
+      status: rows[0].status as string,
+      inactiveDate: rows[0].inactiveDate as Date | null,
+      updatedAt: rows[0].updatedAt as Date | null,
       seasonId: rows[0].seasonId,
       seasonName: rows[0].seasonName as string,
       joinDate: rows[0].joinDate,

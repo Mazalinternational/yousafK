@@ -692,7 +692,9 @@ export function EmployeeAccountPage() {
     return <StatusIndicator statusType="error" message={t("common:error_message")} />;
   }
 
-  const canEdit = data.employee.season?.status === "ACTIVE";
+  const canEdit =
+    data.employee.season?.status === "ACTIVE" &&
+    data.employee.status === "active";
   const employeeCreditBalance = Number(data.ledger.summary.employeeCreditBalance);
   const hasEmployeeCredit = employeeCreditBalance > 0;
   const currentShamsiMonthLabel =

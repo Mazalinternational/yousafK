@@ -174,6 +174,10 @@ export class RolesService {
       if (dto.permissions.length > 0) {
         await this.assignPermissionsByKey(tx, id, dto.permissions);
       }
+      await tx.role.update({
+        where: { id },
+        data: { permissionsCustomizedAt: new Date() },
+      });
     });
 
     const saved = await this.findOne(id);
@@ -238,6 +242,7 @@ export class RolesService {
       slug: role.slug,
       description: role.description,
       isSystem: role.isSystem,
+      permissionsCustomizedAt: role.permissionsCustomizedAt,
       userCount: role._count.users,
       permissions: role.permissions.map((rp) => ({
         id: rp.permission.id,

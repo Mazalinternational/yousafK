@@ -5,7 +5,9 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
+  fromKilograms,
   normalizeWeightUnit,
+  splitQuantityAgainstStock,
   toKilograms,
 } from '../../common/weight/weight-unit.util.js';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
@@ -32,6 +34,8 @@ const storeVarietySaleSelect = {
   soldWeight: true,
   unit: true,
   soldWeightKg: true,
+  fromStockWeightKg: true,
+  oversoldWeightKg: true,
   saleAmount: true,
   loadingAmount: true,
   loadingPaymentChannel: true,
@@ -160,6 +164,8 @@ export class StoreVarietySaleService {
           soldWeight: prepared.soldWeight,
           unit: prepared.unit,
           soldWeightKg: prepared.soldWeightKg,
+          fromStockWeightKg: prepared.fromStockWeightKg,
+          oversoldWeightKg: prepared.oversoldWeightKg,
           saleAmount: prepared.productAmount,
           loadingAmount: prepared.loadingAmount,
           loadingPaymentChannel: prepared.loadingPaymentChannel,
@@ -181,20 +187,14 @@ export class StoreVarietySaleService {
         select: storeVarietySaleSelect,
       });
 
-      await (pooled
-        ? this.storeService.applyPooledSoldDeltaInTransaction(tx, {
-            seasonId: activeSeason.id,
-            seasonName: activeSeason.name,
-            storeType,
-            soldWeightKg: prepared.soldWeightKg,
-          })
-        : this.storeService.applyVarietySoldDeltaInTransaction(tx, {
-            seasonId: activeSeason.id,
-            seasonName: activeSeason.name,
-            storeType,
-            variety,
-            soldWeightKg: prepared.soldWeightKg,
-          }));
+      await this.applySaleStockDelta(tx, {
+        pooled,
+        seasonId: activeSeason.id,
+        seasonName: activeSeason.name,
+        storeType,
+        variety,
+        fromStockWeightKg: prepared.fromStockWeightKg,
+      });
 
       await this.applyAllSettlements(tx, {
         sale,
@@ -342,24 +342,19 @@ export class StoreVarietySaleService {
       storeType,
       variety,
       pooled,
-      extraAvailableKg: new Prisma.Decimal(current.soldWeightKg),
+      extraAvailableKg: new Prisma.Decimal(current.fromStockWeightKg ?? 0),
     });
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      await (pooled
-        ? this.storeService.reversePooledSoldDeltaInTransaction(tx, {
-            seasonId: current.seasonId,
-            seasonName: current.seasonName,
-            storeType,
-            soldWeightKg: new Prisma.Decimal(current.soldWeightKg),
-          })
-        : this.storeService.reverseVarietySoldDeltaInTransaction(tx, {
-            seasonId: current.seasonId,
-            seasonName: current.seasonName,
-            storeType,
-            variety,
-            soldWeightKg: new Prisma.Decimal(current.soldWeightKg),
-          }));
+      await this.applySaleStockDelta(tx, {
+        pooled,
+        seasonId: current.seasonId,
+        seasonName: current.seasonName,
+        storeType,
+        variety,
+        fromStockWeightKg: new Prisma.Decimal(current.fromStockWeightKg ?? 0),
+        reverse: true,
+      });
 
       await this.clearLinkedSettlements(tx, saleId);
 
@@ -371,6 +366,8 @@ export class StoreVarietySaleService {
           soldWeight: prepared.soldWeight,
           unit: prepared.unit,
           soldWeightKg: prepared.soldWeightKg,
+          fromStockWeightKg: prepared.fromStockWeightKg,
+          oversoldWeightKg: prepared.oversoldWeightKg,
           saleAmount: prepared.productAmount,
           loadingAmount: prepared.loadingAmount,
           loadingPaymentChannel: prepared.loadingPaymentChannel,
@@ -392,20 +389,14 @@ export class StoreVarietySaleService {
         select: storeVarietySaleSelect,
       });
 
-      await (pooled
-        ? this.storeService.applyPooledSoldDeltaInTransaction(tx, {
-            seasonId: current.seasonId,
-            seasonName: current.seasonName,
-            storeType,
-            soldWeightKg: prepared.soldWeightKg,
-          })
-        : this.storeService.applyVarietySoldDeltaInTransaction(tx, {
-            seasonId: current.seasonId,
-            seasonName: current.seasonName,
-            storeType,
-            variety,
-            soldWeightKg: prepared.soldWeightKg,
-          }));
+      await this.applySaleStockDelta(tx, {
+        pooled,
+        seasonId: current.seasonId,
+        seasonName: current.seasonName,
+        storeType,
+        variety,
+        fromStockWeightKg: prepared.fromStockWeightKg,
+      });
 
       await this.applyAllSettlements(tx, {
         sale,
@@ -440,24 +431,19 @@ export class StoreVarietySaleService {
 
     const storeType = current.storeType as StoreTypeValue;
     const pooled = isPooledStoreType(storeType);
-    const soldWeightKg = new Prisma.Decimal(current.soldWeightKg);
+    const fromStockWeightKg = new Prisma.Decimal(current.fromStockWeightKg ?? 0);
 
     await this.prisma.$transaction(async (tx) => {
-      if (soldWeightKg.greaterThan(0)) {
-        await (pooled
-          ? this.storeService.reversePooledSoldDeltaInTransaction(tx, {
-              seasonId: current.seasonId,
-              seasonName: current.seasonName,
-              storeType,
-              soldWeightKg,
-            })
-          : this.storeService.reverseVarietySoldDeltaInTransaction(tx, {
-              seasonId: current.seasonId,
-              seasonName: current.seasonName,
-              storeType,
-              variety: current.variety,
-              soldWeightKg,
-            }));
+      if (fromStockWeightKg.greaterThan(0)) {
+        await this.applySaleStockDelta(tx, {
+          pooled,
+          seasonId: current.seasonId,
+          seasonName: current.seasonName,
+          storeType,
+          variety: current.variety,
+          fromStockWeightKg,
+          reverse: true,
+        });
       }
 
       await this.clearLinkedSettlements(tx, saleId);
@@ -641,6 +627,20 @@ export class StoreVarietySaleService {
       soldWeight: new Prisma.Decimal(sale.soldWeight).toFixed(2),
       unit: sale.unit,
       soldWeightKg: new Prisma.Decimal(sale.soldWeightKg).toFixed(2),
+      fromStockWeight: fromKilograms(
+        sale.fromStockWeightKg ?? 0,
+        sale.unit,
+      ).toFixed(2),
+      oversoldWeight: fromKilograms(
+        sale.oversoldWeightKg ?? 0,
+        sale.unit,
+      ).toFixed(2),
+      fromStockWeightKg: new Prisma.Decimal(
+        sale.fromStockWeightKg ?? 0,
+      ).toFixed(2),
+      oversoldWeightKg: new Prisma.Decimal(sale.oversoldWeightKg ?? 0).toFixed(
+        2,
+      ),
       saleAmount: productAmount.toFixed(2),
       loadingAmount: loadingAmount.toFixed(2),
       riceBagsAmount: riceBagsAmount.toFixed(2),
@@ -827,6 +827,62 @@ export class StoreVarietySaleService {
     return { sarafId: sarafIdBig, currencyId };
   }
 
+  private async applySaleStockDelta(
+    tx: Prisma.TransactionClient,
+    params: {
+      pooled: boolean;
+      seasonId: string;
+      seasonName: string;
+      storeType: StoreTypeValue;
+      variety: string;
+      fromStockWeightKg: Prisma.Decimal;
+      reverse?: boolean;
+    },
+  ) {
+    if (!params.fromStockWeightKg.greaterThan(0)) {
+      return;
+    }
+
+    if (params.pooled) {
+      if (params.reverse) {
+        await this.storeService.reversePooledSoldDeltaInTransaction(tx, {
+          seasonId: params.seasonId,
+          seasonName: params.seasonName,
+          storeType: params.storeType,
+          soldWeightKg: params.fromStockWeightKg,
+        });
+        return;
+      }
+
+      await this.storeService.applyPooledSoldDeltaInTransaction(tx, {
+        seasonId: params.seasonId,
+        seasonName: params.seasonName,
+        storeType: params.storeType,
+        soldWeightKg: params.fromStockWeightKg,
+      });
+      return;
+    }
+
+    if (params.reverse) {
+      await this.storeService.reverseVarietySoldDeltaInTransaction(tx, {
+        seasonId: params.seasonId,
+        seasonName: params.seasonName,
+        storeType: params.storeType,
+        variety: params.variety,
+        soldWeightKg: params.fromStockWeightKg,
+      });
+      return;
+    }
+
+    await this.storeService.applyVarietySoldDeltaInTransaction(tx, {
+      seasonId: params.seasonId,
+      seasonName: params.seasonName,
+      storeType: params.storeType,
+      variety: params.variety,
+      soldWeightKg: params.fromStockWeightKg,
+    });
+  }
+
   private async resolveSaleWriteFromDto(
     dto: CreateStoreVarietySaleDto | UpdateStoreVarietySaleDto,
     params: {
@@ -895,14 +951,10 @@ export class StoreVarietySaleService {
           params.variety,
         );
     const availableKg = baseAvailableKg.plus(params.extraAvailableKg ?? 0);
-
-    if (soldWeightKg.greaterThan(availableKg)) {
-      throw new BadRequestException(
-        params.pooled
-          ? `Not enough stock available in this store (${availableKg.toFixed(2)} kg)`
-          : `Not enough ${params.variety} stock available in this store (${availableKg.toFixed(2)} kg)`,
-      );
-    }
+    const { fromStockWeightKg, oversoldWeightKg } = splitQuantityAgainstStock(
+      soldWeightKg,
+      availableKg,
+    );
 
     const sarafIdTrimmed = dto.sarafId?.trim() ?? '';
     const currencyIdTrimmed = dto.sarafLedgerCurrencyId?.trim() ?? '';
@@ -956,6 +1008,8 @@ export class StoreVarietySaleService {
       unit,
       soldWeight,
       soldWeightKg,
+      fromStockWeightKg,
+      oversoldWeightKg,
       saleDate,
       productAmount,
       loadingAmount,

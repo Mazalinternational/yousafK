@@ -81,6 +81,15 @@ function StoreVarietySalePdfDocument({
           documentRtl={documentRtl}
           useArabicFont={useArabicFont}
         />
+        {Number(sale.oversoldWeightKg ?? 0) > 0 ? (
+          <PdfLabeledValue
+            label={t("common:sale_oversold_weight")}
+            value={formatWeightFromKg(sale.oversoldWeightKg ?? "0", t)}
+            style={ledgerPdfBaseStyles.metaRow}
+            documentRtl={documentRtl}
+            useArabicFont={useArabicFont}
+          />
+        ) : null}
         <View style={ledgerPdfBaseStyles.section}>
           <PdfLabeledValue
             label={t("common:buyer")}

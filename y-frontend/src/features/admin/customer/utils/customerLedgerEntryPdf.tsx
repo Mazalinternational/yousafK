@@ -65,6 +65,8 @@ export function getCustomerLedgerEntryLabel(entry: CustomerLedgerEntry, t: TFunc
       return t("common:ledger_entry_seller_credit");
     case "process_production_store_sale":
       return t("common:ledger_entry_store_variety_sale");
+    case "buyer_sale_oversell":
+      return t("common:ledger_entry_sale_oversell");
     default:
       return entry.entryType;
   }

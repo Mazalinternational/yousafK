@@ -149,15 +149,6 @@ export function RolePermissionsPage() {
     [mutation],
   );
 
-  const persistRef = useRef(persistCurrentSelection);
-  persistRef.current = persistCurrentSelection;
-
-  useEffect(() => {
-    if (!dirty || !canEditPermissions) return;
-    const timer = window.setTimeout(() => persistRef.current({ silent: true }), 500);
-    return () => window.clearTimeout(timer);
-  }, [picked, dirty, canEditPermissions]);
-
   useEffect(() => {
     const flush = () => {
       const role = selectedRoleRef.current;
@@ -170,12 +161,9 @@ export function RolePermissionsPage() {
     };
     window.addEventListener("pagehide", flush);
     document.addEventListener("visibilitychange", onVisibility);
-    window.addEventListener("beforeunload", flush);
     return () => {
       window.removeEventListener("pagehide", flush);
       document.removeEventListener("visibilitychange", onVisibility);
-      window.removeEventListener("beforeunload", flush);
-      flush();
     };
   }, []);
 
@@ -189,6 +177,7 @@ export function RolePermissionsPage() {
       persistCurrentSelection({ silent: true });
     }
     hydratedRoleIdRef.current = null;
+    setDirty(false);
     setSelectedRoleId(value);
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);

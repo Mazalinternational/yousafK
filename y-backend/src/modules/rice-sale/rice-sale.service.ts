@@ -5,7 +5,10 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
+  fromKilograms,
   normalizeWeightUnit,
+  resolveFromStockWeightKg,
+  splitQuantityAgainstStock,
   toKilograms,
 } from '../../common/weight/weight-unit.util.js';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
@@ -25,6 +28,8 @@ const riceSaleSelect = {
   riceVariety: true,
   quantity: true,
   unit: true,
+  fromStockWeightKg: true,
+  oversoldWeightKg: true,
   saleDate: true,
   totalAmount: true,
   loadingAmount: true,
@@ -148,6 +153,8 @@ export class RiceSaleService {
           riceVariety: prepared.riceVariety,
           quantity: prepared.quantity,
           unit: prepared.unit,
+          fromStockWeightKg: prepared.fromStockWeightKg,
+          oversoldWeightKg: prepared.oversoldWeightKg,
           saleDate: prepared.saleDate,
           totalAmount: prepared.riceAmount,
           loadingAmount: prepared.loadingAmount,
@@ -233,6 +240,8 @@ export class RiceSaleService {
           riceVariety: prepared.riceVariety,
           quantity: prepared.quantity,
           unit: prepared.unit,
+          fromStockWeightKg: prepared.fromStockWeightKg,
+          oversoldWeightKg: prepared.oversoldWeightKg,
           saleDate: prepared.saleDate,
           totalAmount: prepared.riceAmount,
           loadingAmount: prepared.loadingAmount,
@@ -489,6 +498,8 @@ export class RiceSaleService {
         select: {
           quantity: true,
           unit: true,
+          fromStockWeightKg: true,
+          oversoldWeightKg: true,
         },
       }),
       (this.prisma as any).riceCharity.findMany({
@@ -528,9 +539,19 @@ export class RiceSaleService {
     const totalSalesOutKg = saleEntries.reduce(
       (
         sum: Prisma.Decimal,
-        entry: { quantity: Prisma.Decimal; unit: string },
+        entry: {
+          quantity: Prisma.Decimal;
+          unit: string;
+          fromStockWeightKg?: Prisma.Decimal | null;
+        },
       ) =>
-        sum.plus(toKilograms(new Prisma.Decimal(entry.quantity), entry.unit)),
+        sum.plus(
+          resolveFromStockWeightKg({
+            fromStockWeightKg: entry.fromStockWeightKg,
+            fallbackQuantity: entry.quantity,
+            fallbackUnit: entry.unit,
+          }),
+        ),
       new Prisma.Decimal(0),
     );
 
@@ -756,18 +777,18 @@ export class RiceSaleService {
       excludeRiceSaleId: params.excludeRiceSaleId,
     });
     const requestedKg = toKilograms(quantity, unit);
-
-    if (requestedKg.greaterThan(availableKg)) {
-      throw new BadRequestException(
-        `Not enough ${riceVariety} rice in stock for this season`,
-      );
-    }
+    const { fromStockWeightKg, oversoldWeightKg } = splitQuantityAgainstStock(
+      requestedKg,
+      availableKg,
+    );
 
     return {
       buyer,
       riceVariety,
       unit,
       quantity,
+      fromStockWeightKg,
+      oversoldWeightKg,
       saleDate,
       riceAmount,
       loadingAmount,
@@ -1175,6 +1196,20 @@ export class RiceSaleService {
       id: String(sale.id),
       buyerCustomerId: String(sale.buyerCustomerId),
       quantity: new Prisma.Decimal(sale.quantity).toFixed(2),
+      fromStockWeight: fromKilograms(
+        sale.fromStockWeightKg ?? 0,
+        sale.unit,
+      ).toFixed(2),
+      oversoldWeight: fromKilograms(
+        sale.oversoldWeightKg ?? 0,
+        sale.unit,
+      ).toFixed(2),
+      fromStockWeightKg: new Prisma.Decimal(
+        sale.fromStockWeightKg ?? 0,
+      ).toFixed(2),
+      oversoldWeightKg: new Prisma.Decimal(sale.oversoldWeightKg ?? 0).toFixed(
+        2,
+      ),
       totalAmount: riceAmount.toFixed(2),
       loadingAmount: loadingAmount.toFixed(2),
       riceBagsAmount: riceBagsAmount.toFixed(2),

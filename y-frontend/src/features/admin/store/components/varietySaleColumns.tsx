@@ -2,6 +2,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import type { TFunction } from "i18next";
 import { dateFormatter } from "@/utils/dataFormatters";
 import { formatDisplayAmount } from "@/utils/displayLocale";
+import { formatQuantityWithUnit } from "@/utils/weightUnit";
 import type { StoreVarietySale } from "../schemas/store-variety-sale";
 
 export function getStoreVarietySaleColumns(
@@ -26,7 +27,23 @@ export function getStoreVarietySaleColumns(
     {
       id: "weight",
       header: t("common:weight"),
-      cell: ({ row }) => `${row.original.soldWeight} ${row.original.unit}`,
+      cell: ({ row }) =>
+        formatQuantityWithUnit(row.original.soldWeight, row.original.unit, t),
+    },
+    {
+      id: "oversoldWeight",
+      header: t("common:sale_oversold_weight"),
+      cell: ({ row }) => {
+        const extra = Number(row.original.oversoldWeight ?? 0);
+        if (!Number.isFinite(extra) || extra <= 0) {
+          return "—";
+        }
+        return formatQuantityWithUnit(
+          row.original.oversoldWeight ?? "0",
+          row.original.unit,
+          t,
+        );
+      },
     },
     { accessorKey: "saleAmount", header: t("common:sale_amount"), cell: ({ row }) => formatDisplayAmount(row.original.saleAmount, locale) },
     {

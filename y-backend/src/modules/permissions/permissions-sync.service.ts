@@ -42,9 +42,8 @@ export class PermissionsSyncService implements OnModuleInit {
   }
 
   /**
-   * Additive grant so roles that already have customer access keep seeing every
-   * kind after type-scoped permissions are introduced. Admins can then tighten
-   * access per type in the Role Permissions UI.
+   * Additive grant for roles that already have customer access when new
+   * type-scoped permissions are introduced. Skips roles the admin customized.
    */
   private async ensureCustomerTypeAccessForExistingRoles() {
     const typeKeys = CUSTOMER_TYPE_SLUGS.map((type) =>
@@ -74,24 +73,20 @@ export class PermissionsSyncService implements OnModuleInit {
         },
         role: {
           slug: { not: SYSTEM_ROLES.ADMIN },
+          permissionsCustomizedAt: null,
         },
       },
       select: { roleId: true },
       distinct: ['roleId'],
     });
 
-    // Also ensure manager/staff even if they somehow lack customers.* yet.
-    const systemRoles = await this.prisma.role.findMany({
-      where: {
-        slug: { in: [SYSTEM_ROLES.MANAGER, SYSTEM_ROLES.STAFF] },
-      },
-      select: { id: true },
-    });
+    const roleIds = new Set<string>(
+      rolesWithCustomerAccess.map((row) => row.roleId),
+    );
 
-    const roleIds = new Set<string>([
-      ...rolesWithCustomerAccess.map((row) => row.roleId),
-      ...systemRoles.map((role) => role.id),
-    ]);
+    if (roleIds.size === 0) {
+      return;
+    }
 
     for (const roleId of roleIds) {
       await this.prisma.rolePermission.createMany({

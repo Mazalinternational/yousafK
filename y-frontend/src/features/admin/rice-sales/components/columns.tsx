@@ -26,6 +26,21 @@ export function getRiceSaleColumns(t: TFunction): ColumnDef<RiceSale>[] {
         formatQuantityWithUnit(row.original.quantity, row.original.unit, t),
     },
     {
+      id: "oversoldWeight",
+      header: t("common:sale_oversold_weight"),
+      cell: ({ row }) => {
+        const extra = Number(row.original.oversoldWeight ?? 0);
+        if (!Number.isFinite(extra) || extra <= 0) {
+          return "—";
+        }
+        return formatQuantityWithUnit(
+          row.original.oversoldWeight ?? "0",
+          row.original.unit,
+          t,
+        );
+      },
+    },
+    {
       accessorKey: "totalAmount",
       header: t("common:rice_sale_rice_amount"),
     },

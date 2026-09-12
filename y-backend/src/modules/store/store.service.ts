@@ -565,7 +565,7 @@ export class StoreService {
         )::text AS "remainingTotalKg",
         COALESCE(
           (
-            SELECT SUM(svs."sold_weight_kg")
+            SELECT SUM(COALESCE(svs."from_stock_weight_kg", svs."sold_weight_kg"))
             FROM "store_variety_sales" svs
             WHERE svs."season_id" = ${current.seasonId}
               AND svs."store_type" = ${storeType}::"StoreType"
@@ -1135,7 +1135,7 @@ export class StoreService {
           AND se."store_type" = ${storeType}::"StoreType"
       ),
       "sale_totals" AS (
-        SELECT COALESCE(SUM(svs."sold_weight_kg"), 0) AS "sale_sold_kg"
+        SELECT COALESCE(SUM(COALESCE(svs."from_stock_weight_kg", svs."sold_weight_kg")), 0) AS "sale_sold_kg"
         FROM "store_variety_sales" svs
         WHERE svs."season_id" = ${seasonId}
           AND svs."store_type" = ${storeType}::"StoreType"
@@ -1172,11 +1172,7 @@ export class StoreService {
       seasonId,
       storeType,
       pooled: true,
-      varieties:
-        Number(serialized.totalWeightKg) > 0 ||
-        Number(serialized.availableWeightKg) > 0
-          ? [serialized]
-          : [],
+      varieties: [serialized],
     };
   }
 
@@ -1215,7 +1211,7 @@ export class StoreService {
       "sale_agg" AS (
         SELECT
           svs."variety" AS "variety",
-          COALESCE(SUM(svs."sold_weight_kg"), 0) AS "sale_sold_kg"
+          COALESCE(SUM(COALESCE(svs."from_stock_weight_kg", svs."sold_weight_kg")), 0) AS "sale_sold_kg"
         FROM "store_variety_sales" svs
         WHERE svs."season_id" = ${seasonId}
           AND svs."store_type" = ${storeType}::"StoreType"
@@ -1268,7 +1264,7 @@ export class StoreService {
     },
   ) {
     if (!params.soldWeightKg.greaterThan(0)) {
-      throw new BadRequestException('soldWeightKg must be greater than zero');
+      return;
     }
 
     await this.applyVarietyStockDelta(tx, {
@@ -1292,7 +1288,7 @@ export class StoreService {
     },
   ) {
     if (!params.soldWeightKg.greaterThan(0)) {
-      throw new BadRequestException('soldWeightKg must be greater than zero');
+      return;
     }
 
     const stockRows = await tx.$queryRaw<
@@ -1360,7 +1356,7 @@ export class StoreService {
     },
   ) {
     if (!params.soldWeightKg.greaterThan(0)) {
-      throw new BadRequestException('soldWeightKg must be greater than zero');
+      return;
     }
 
     await this.applyVarietyStockDelta(tx, {
@@ -1384,7 +1380,7 @@ export class StoreService {
     },
   ) {
     if (!params.soldWeightKg.greaterThan(0)) {
-      throw new BadRequestException('soldWeightKg must be greater than zero');
+      return;
     }
 
     const stockRows = await tx.$queryRaw<

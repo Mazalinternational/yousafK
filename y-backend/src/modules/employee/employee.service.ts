@@ -6,13 +6,17 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
 import {
+  compareShamsiMonthKeys,
   currentShamsiMonthKey,
   shamsiMonthStartGregorian,
+  todayGregorianDate,
 } from '../../common/shamsi-calendar.js';
 import { SeasonService } from '../season/season.service.js';
 import {
   calculateOutstandingPayable,
   calculatePayableForShamsiMonth,
+  resolveAccrualEndMonthKey,
+  resolveEmploymentEndDate,
   resolvePaymentStatus,
 } from './employee-salary.util.js';
 import { CreateEmployeeDto } from './dto/create-employee.dto.js';
@@ -46,6 +50,8 @@ export class EmployeeService {
     );
     const status = this.normalizeStatus(createEmployeeDto.status);
     const notes = this.normalizeOptionalText(createEmployeeDto.notes);
+    const inactiveDate =
+      status === 'inactive' ? todayGregorianDate() : null;
 
     const created = await this.prisma.$transaction(async (tx) => {
       const inserted = await tx.$queryRaw<Array<{ id: bigint }>>(Prisma.sql`
@@ -58,6 +64,7 @@ export class EmployeeService {
           "join_date",
           "monthly_salary",
           "status",
+          "inactive_date",
           "notes",
           "season_id",
           "season_name",
@@ -72,6 +79,7 @@ export class EmployeeService {
           ${joinDate},
           ${monthlySalary},
           ${status},
+          ${inactiveDate},
           ${notes},
           ${activeSeason.id},
           ${activeSeason.name},
@@ -182,6 +190,7 @@ export class EmployeeService {
         e."join_date" AS "joinDate",
         e."monthly_salary"::text AS "monthlySalary",
         e."status" AS "status",
+        e."inactive_date" AS "inactiveDate",
         e."notes" AS "notes",
         e."season_id" AS "seasonId",
         e."season_name" AS "seasonName",
@@ -235,6 +244,7 @@ export class EmployeeService {
         e."join_date" AS "joinDate",
         e."monthly_salary"::text AS "monthlySalary",
         e."status" AS "status",
+        e."inactive_date" AS "inactiveDate",
         e."notes" AS "notes",
         e."season_id" AS "seasonId",
         e."season_name" AS "seasonName",
@@ -286,6 +296,8 @@ export class EmployeeService {
         e."name" AS "name",
         e."position" AS "position",
         e."status" AS "status",
+        e."inactive_date" AS "inactiveDate",
+        e."updated_at" AS "updatedAt",
         e."phone_no" AS "phoneNo",
         e."join_date" AS "joinDate",
         e."monthly_salary"::text AS "monthlySalary",
@@ -313,12 +325,29 @@ export class EmployeeService {
       const deductionsThisMonth = new Prisma.Decimal(
         row.deductionsThisMonth ?? 0,
       );
-      const grossPayableThisMonth = calculatePayableForShamsiMonth(
-        monthlySalary,
-        row.joinDate,
-        monthStart,
-        deductionsThisMonth,
-      ).payableAmount;
+      const employmentEndDate = resolveEmploymentEndDate(
+        row.status,
+        row.inactiveDate,
+        row.updatedAt,
+      );
+      const accrualEndMonthKey = resolveAccrualEndMonthKey(
+        row.status,
+        row.inactiveDate,
+        undefined,
+        row.updatedAt,
+      );
+      const isPastEmployment =
+        compareShamsiMonthKeys(currentMonthKey, accrualEndMonthKey) > 0;
+      const grossPayableThisMonth = isPastEmployment
+        ? new Prisma.Decimal(0)
+        : calculatePayableForShamsiMonth(
+            monthlySalary,
+            row.joinDate,
+            monthStart,
+            deductionsThisMonth,
+            todayGregorianDate(),
+            employmentEndDate,
+          ).payableAmount;
       const rawRemainingAmount = grossPayableThisMonth.minus(paidThisMonth);
       const remainingAmount = rawRemainingAmount.greaterThan(0)
         ? rawRemainingAmount
@@ -495,6 +524,19 @@ export class EmployeeService {
       updateEmployeeDto.notes !== undefined
         ? this.normalizeOptionalText(updateEmployeeDto.notes)
         : current.notes;
+    const wasInactive = current.status === 'inactive';
+    const becomingInactive = status === 'inactive' && !wasInactive;
+    const becomingActive = status === 'active' && wasInactive;
+    let inactiveDate: string | Date | null =
+      current.inactiveDate != null ? current.inactiveDate : null;
+
+    if (becomingInactive) {
+      inactiveDate = todayGregorianDate();
+    } else if (becomingActive) {
+      inactiveDate = null;
+    } else if (status === 'inactive' && inactiveDate == null) {
+      inactiveDate = todayGregorianDate();
+    }
 
     await this.prisma.$executeRaw(Prisma.sql`
       UPDATE "employees"
@@ -506,6 +548,7 @@ export class EmployeeService {
         "join_date" = ${joinDate},
         "monthly_salary" = ${monthlySalary},
         "status" = ${status},
+        "inactive_date" = ${inactiveDate},
         "notes" = ${notes},
         "updated_at" = NOW()
       WHERE "id" = ${this.parseId(id)}
@@ -568,6 +611,7 @@ export class EmployeeService {
       joinDate: row.joinDate,
       monthlySalary: new Prisma.Decimal(row.monthlySalary).toFixed(2),
       status: row.status,
+      inactiveDate: row.inactiveDate ?? null,
       notes: row.notes,
       seasonId: row.seasonId,
       seasonName: row.seasonName,

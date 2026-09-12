@@ -621,8 +621,13 @@ export function JwaliAccountPage() {
                                     paymentForm.reset({
                                       amount: values.amount,
                                       paymentDate: values.paymentDate,
-                                      paymentChannel: "cash",
-                                      currencyId: payment.currency?.id ?? payment.currencyId ?? "",
+                                      paymentChannel: payment.paymentChannel ?? "cash",
+                                      currencyId:
+                                        payment.currency?.id ??
+                                        payment.sarafLedgerCurrency?.id ??
+                                        payment.currencyId ??
+                                        payment.sarafLedgerCurrencyId ??
+                                        "",
                                       sarafId: payment.sarafId ?? "",
                                       notes: values.notes ?? "",
                                     });
@@ -745,14 +750,21 @@ export function JwaliAccountPage() {
         contentClassName="min-w-3xl"
       >
         {editingPayment ? (
+          <Form {...paymentForm}>
           <form
-            onSubmit={(e) => {
-              e.preventDefault();
+            onSubmit={paymentForm.handleSubmit((values) => {
               updatePayment(
-                { paymentId: editingPayment.id, values: editingPayment.values },
+                {
+                  paymentId: editingPayment.id,
+                  values: {
+                    amount: values.amount,
+                    paymentDate: values.paymentDate,
+                    notes: values.notes,
+                  },
+                },
                 { onSuccess: () => setEditingPayment(null) },
               );
-            }}
+            })}
             className="space-y-4"
           >
             <div className="grid gap-4 md:grid-cols-2">
@@ -784,6 +796,7 @@ export function JwaliAccountPage() {
                 : t("common:save", { name: t("common:jwali_payment") })}
             </Button>
           </form>
+          </Form>
         ) : null}
       </CustomDialog>
 

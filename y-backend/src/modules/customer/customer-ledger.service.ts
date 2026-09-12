@@ -6,6 +6,7 @@ import {
 import { CustomerLedgerEntryType, Prisma } from '@prisma/client';
 import {
   APP_WEIGHT_UNIT,
+  fromKilograms,
   normalizeWeightUnit,
   toKilograms,
 } from '../../common/weight/weight-unit.util.js';
@@ -95,6 +96,7 @@ type SerializedLedgerEntry = {
     | 'seller_debit'
     | 'seller_credit'
     | 'process_production_store_sale'
+    | 'buyer_sale_oversell'
     | 'vendor_expense'
     | 'vendor_payment'
     | 'debtor_disbursement'
@@ -118,6 +120,8 @@ type SerializedLedgerEntry = {
   currencyName?: string | null;
   paddyQuantity: string | null;
   riceQuantity: string | null;
+  fromStockQuantity?: string | null;
+  oversoldQuantity?: string | null;
   riceVariety: string | null;
   paddyVariety: string | null;
   unit: string | null;
@@ -159,6 +163,14 @@ export class CustomerLedgerService {
     return (this.prisma as any).riceWarehouse;
   }
 
+  private get companyOwnedPaddyWarehouseModel() {
+    return (this.prisma as any).companyOwnedPaddyWarehouse;
+  }
+
+  private get enteringPaddyModel() {
+    return (this.prisma as any).enteringPaddy;
+  }
+
   private isBuyerCustomerType(
     customerType: string,
   ): customerType is 'buyer' | 'process_production_buyer' {
@@ -190,8 +202,28 @@ export class CustomerLedgerService {
   }
 
   async getCustomerAccount(customerId: string) {
+    const parsedCustomerId = this.parseId(customerId);
+    const customerTypeRow = await this.customerModel.findUnique({
+      where: { id: parsedCustomerId },
+      select: { id: true, type: true },
+    });
+
+    if (!customerTypeRow) {
+      throw new NotFoundException(`Customer with id "${customerId}" not found`);
+    }
+
+    if (customerTypeRow.type === 'paddy_seller') {
+      await this.prisma.$transaction(async (tx) => {
+        await this.reconcilePaddySellerWarehousePayments(tx, parsedCustomerId);
+      });
+    } else if (customerTypeRow.type === 'rice_seller') {
+      await this.prisma.$transaction(async (tx) => {
+        await this.reconcileRiceSellerWarehousePayments(tx, parsedCustomerId);
+      });
+    }
+
     const customer = await this.customerModel.findUnique({
-      where: { id: this.parseId(customerId) },
+      where: { id: parsedCustomerId },
       select: {
         id: true,
         name: true,
@@ -266,6 +298,8 @@ export class CustomerLedgerService {
             riceVariety: true,
             quantity: true,
             unit: true,
+            fromStockWeightKg: true,
+            oversoldWeightKg: true,
             saleDate: true,
             totalAmount: true,
             loadingAmount: true,
@@ -336,6 +370,8 @@ export class CustomerLedgerService {
             soldWeight: true,
             unit: true,
             soldWeightKg: true,
+            fromStockWeightKg: true,
+            oversoldWeightKg: true,
             saleAmount: true,
             loadingAmount: true,
             loadingPaymentChannel: true,
@@ -439,12 +475,30 @@ export class CustomerLedgerService {
     const currencyEnrichedPersisted = persistedEntries.map((entry) =>
       this.enrichSellerEntryCurrency(entry, warehouseCurrencyMap),
     );
+    const paddyWarehouseIds = customer.enteringPaddies
+      .map(
+        (enteringPaddy: { companyOwnedPaddyWarehouse?: { id: bigint } | null }) =>
+          enteringPaddy.companyOwnedPaddyWarehouse?.id,
+      )
+      .filter((id: bigint | undefined): id is bigint => id != null);
+    const riceWarehouseIds =
+      customer.type === 'rice_seller'
+        ? riceWarehouseEntries.map((warehouse: { id: bigint }) => warehouse.id)
+        : [];
+    const warehouseBasePaidMaps = await this.loadWarehouseBasePaidAmounts(
+      this.prisma,
+      {
+        paddyWarehouseIds,
+        riceWarehouseIds,
+      },
+    );
     const entries =
       customer.type === 'paddy_seller' || customer.type === 'rice_seller'
         ? this.mergeSellerEntriesWithWarehouseActivity(
             currencyEnrichedPersisted,
             customer.enteringPaddies,
             customer.type === 'rice_seller' ? riceWarehouseEntries : [],
+            warehouseBasePaidMaps,
           )
         : this.isBuyerCustomerType(customer.type)
           ? this.sortLedgerEntriesDesc([
@@ -742,6 +796,12 @@ export class CustomerLedgerService {
           notes: notes ? `${paymentLabel} — ${notes}` : paymentLabel,
           customerLedgerEntryId: entry.id,
         });
+      }
+
+      if (customer.type === 'paddy_seller') {
+        await this.reconcilePaddySellerWarehousePayments(tx, customer.id);
+      } else if (customer.type === 'rice_seller') {
+        await this.reconcileRiceSellerWarehousePayments(tx, customer.id);
       }
 
       return entry;
@@ -1761,6 +1821,17 @@ export class CustomerLedgerService {
         await this.deleteLinkedCashAndSaraf(tx, entry.id);
         await tx.customerLedgerEntry.delete({ where: { id: entry.id } });
       }
+
+      if (
+        entry.entryType === 'company_payment' &&
+        (customer.type === 'paddy_seller' || customer.type === 'rice_seller')
+      ) {
+        if (customer.type === 'paddy_seller') {
+          await this.reconcilePaddySellerWarehousePayments(tx, customer.id);
+        } else {
+          await this.reconcileRiceSellerWarehousePayments(tx, customer.id);
+        }
+      }
     });
 
     return { id: entryId };
@@ -2106,6 +2177,326 @@ export class CustomerLedgerService {
         sourceRiceWarehouseId,
       },
     });
+  }
+
+  private async loadWarehouseBasePaidAmounts(
+    db: Prisma.TransactionClient | PrismaService,
+    params: {
+      paddyWarehouseIds?: bigint[];
+      riceWarehouseIds?: bigint[];
+    },
+  ) {
+    const paddy = new Map<string, Prisma.Decimal>();
+    const rice = new Map<string, Prisma.Decimal>();
+    const paddyWarehouseIds = params.paddyWarehouseIds ?? [];
+    const riceWarehouseIds = params.riceWarehouseIds ?? [];
+
+    for (const id of paddyWarehouseIds) {
+      paddy.set(String(id), new Prisma.Decimal(0));
+    }
+
+    for (const id of riceWarehouseIds) {
+      rice.set(String(id), new Prisma.Decimal(0));
+    }
+
+    if (!paddyWarehouseIds.length && !riceWarehouseIds.length) {
+      return { paddy, rice };
+    }
+
+    const [cashTransactions, sarafEntries] = await Promise.all([
+      db.cashTransaction.findMany({
+        where: {
+          direction: 'out',
+          OR: [
+            paddyWarehouseIds.length
+              ? {
+                  companyOwnedPaddyWarehouseId: { in: paddyWarehouseIds },
+                }
+              : undefined,
+            riceWarehouseIds.length
+              ? { riceWarehouseId: { in: riceWarehouseIds } }
+              : undefined,
+          ].filter(Boolean) as Prisma.CashTransactionWhereInput[],
+        },
+        select: {
+          companyOwnedPaddyWarehouseId: true,
+          riceWarehouseId: true,
+          amount: true,
+        },
+      }),
+      db.sarafLedgerEntry.findMany({
+        where: {
+          OR: [
+            paddyWarehouseIds.length
+              ? {
+                  companyOwnedPaddyWarehouseId: { in: paddyWarehouseIds },
+                }
+              : undefined,
+            riceWarehouseIds.length
+              ? { riceWarehouseId: { in: riceWarehouseIds } }
+              : undefined,
+          ].filter(Boolean) as Prisma.SarafLedgerEntryWhereInput[],
+        },
+        select: {
+          companyOwnedPaddyWarehouseId: true,
+          riceWarehouseId: true,
+          amount: true,
+        },
+      }),
+    ]);
+
+    for (const transaction of cashTransactions) {
+      if (transaction.companyOwnedPaddyWarehouseId) {
+        const key = String(transaction.companyOwnedPaddyWarehouseId);
+        paddy.set(
+          key,
+          (paddy.get(key) ?? new Prisma.Decimal(0)).plus(
+            new Prisma.Decimal(transaction.amount),
+          ),
+        );
+      }
+
+      if (transaction.riceWarehouseId) {
+        const key = String(transaction.riceWarehouseId);
+        rice.set(
+          key,
+          (rice.get(key) ?? new Prisma.Decimal(0)).plus(
+            new Prisma.Decimal(transaction.amount),
+          ),
+        );
+      }
+    }
+
+    for (const entry of sarafEntries) {
+      if (entry.companyOwnedPaddyWarehouseId) {
+        const key = String(entry.companyOwnedPaddyWarehouseId);
+        paddy.set(
+          key,
+          (paddy.get(key) ?? new Prisma.Decimal(0)).plus(
+            new Prisma.Decimal(entry.amount).abs(),
+          ),
+        );
+      }
+
+      if (entry.riceWarehouseId) {
+        const key = String(entry.riceWarehouseId);
+        rice.set(
+          key,
+          (rice.get(key) ?? new Prisma.Decimal(0)).plus(
+            new Prisma.Decimal(entry.amount).abs(),
+          ),
+        );
+      }
+    }
+
+    return { paddy, rice };
+  }
+
+  private async listSellerAccountPayments(
+    tx: Prisma.TransactionClient,
+    customerId: bigint,
+  ) {
+    return tx.customerLedgerEntry.findMany({
+      where: {
+        customerId,
+        entryType: 'company_payment',
+        counterpartyCustomerId: null,
+        paymentChannel: { in: ['cash', 'saraf'] },
+      },
+      orderBy: [{ occurredAt: 'asc' }, { createdAt: 'asc' }],
+      select: {
+        amount: true,
+      },
+    });
+  }
+
+  private async applySellerPaymentsToWarehouses(
+    tx: Prisma.TransactionClient,
+    warehouseState: Array<{
+      id: bigint;
+      totalAmount: Prisma.Decimal;
+      paidAmount: Prisma.Decimal;
+    }>,
+    sellerPayments: Array<{ amount: Prisma.Decimal | null }>,
+    warehouseKind: 'paddy' | 'rice',
+  ) {
+    for (const payment of sellerPayments) {
+      let remaining = new Prisma.Decimal(payment.amount ?? 0);
+      if (remaining.lessThanOrEqualTo(0)) {
+        continue;
+      }
+
+      for (const warehouse of warehouseState) {
+        if (remaining.lessThanOrEqualTo(0)) {
+          break;
+        }
+
+        const owed = warehouse.totalAmount.minus(warehouse.paidAmount);
+        if (owed.lessThanOrEqualTo(0)) {
+          continue;
+        }
+
+        const applied = Prisma.Decimal.min(remaining, owed);
+        warehouse.paidAmount = warehouse.paidAmount.plus(applied);
+        remaining = remaining.minus(applied);
+      }
+    }
+
+    for (const warehouse of warehouseState) {
+      const remainingAmount = Prisma.Decimal.max(
+        warehouse.totalAmount.minus(warehouse.paidAmount),
+        0,
+      );
+      let paymentType: 'paid' | 'partial_paid' | 'remaining' = 'remaining';
+
+      if (remainingAmount.lessThanOrEqualTo(0)) {
+        paymentType = 'paid';
+      } else if (warehouse.paidAmount.greaterThan(0)) {
+        paymentType = 'partial_paid';
+      }
+
+      const data = {
+        paidAmount: warehouse.paidAmount,
+        remainingAmount,
+        paymentType,
+      };
+
+      if (warehouseKind === 'paddy') {
+        await tx.companyOwnedPaddyWarehouse.update({
+          where: { id: warehouse.id },
+          data,
+        });
+      } else {
+        await tx.riceWarehouse.update({
+          where: { id: warehouse.id },
+          data,
+        });
+      }
+    }
+  }
+
+  private async reconcilePaddySellerWarehousePayments(
+    tx: Prisma.TransactionClient,
+    customerId: bigint,
+  ) {
+    const enteringPaddies = await tx.enteringPaddy.findMany({
+      where: { customerId },
+      select: {
+        companyOwnedPaddyWarehouse: {
+          select: {
+            id: true,
+            totalAmount: true,
+            receivedDate: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+
+    const warehouses = enteringPaddies
+      .map(
+        (enteringPaddy: {
+          companyOwnedPaddyWarehouse?: {
+            id: bigint;
+            totalAmount: Prisma.Decimal;
+            receivedDate: Date;
+            createdAt: Date;
+          } | null;
+        }) => enteringPaddy.companyOwnedPaddyWarehouse,
+      )
+      .filter(
+        (
+          warehouse:
+            | {
+                id: bigint;
+                totalAmount: Prisma.Decimal;
+                receivedDate: Date;
+                createdAt: Date;
+              }
+            | null
+            | undefined,
+        ): warehouse is {
+          id: bigint;
+          totalAmount: Prisma.Decimal;
+          receivedDate: Date;
+          createdAt: Date;
+        } => Boolean(warehouse),
+      )
+      .sort((left, right) => {
+        const receivedAtDiff =
+          left.receivedDate.getTime() - right.receivedDate.getTime();
+        if (receivedAtDiff !== 0) {
+          return receivedAtDiff;
+        }
+
+        return left.createdAt.getTime() - right.createdAt.getTime();
+      });
+
+    if (!warehouses.length) {
+      return;
+    }
+
+    const { paddy: basePaidByWarehouse } = await this.loadWarehouseBasePaidAmounts(
+      tx,
+      {
+        paddyWarehouseIds: warehouses.map((warehouse) => warehouse.id),
+      },
+    );
+    const sellerPayments = await this.listSellerAccountPayments(tx, customerId);
+
+    await this.applySellerPaymentsToWarehouses(
+      tx,
+      warehouses.map((warehouse) => ({
+        id: warehouse.id,
+        totalAmount: new Prisma.Decimal(warehouse.totalAmount),
+        paidAmount:
+          basePaidByWarehouse.get(String(warehouse.id)) ??
+          new Prisma.Decimal(0),
+      })),
+      sellerPayments,
+      'paddy',
+    );
+  }
+
+  private async reconcileRiceSellerWarehousePayments(
+    tx: Prisma.TransactionClient,
+    customerId: bigint,
+  ) {
+    const warehouses = await tx.riceWarehouse.findMany({
+      where: { customerId },
+      select: {
+        id: true,
+        totalAmount: true,
+        receivedDate: true,
+        createdAt: true,
+      },
+      orderBy: [{ receivedDate: 'asc' }, { createdAt: 'asc' }],
+    });
+
+    if (!warehouses.length) {
+      return;
+    }
+
+    const { rice: basePaidByWarehouse } = await this.loadWarehouseBasePaidAmounts(
+      tx,
+      {
+        riceWarehouseIds: warehouses.map((warehouse: { id: bigint }) => warehouse.id),
+      },
+    );
+    const sellerPayments = await this.listSellerAccountPayments(tx, customerId);
+
+    await this.applySellerPaymentsToWarehouses(
+      tx,
+      warehouses.map((warehouse: { id: bigint; totalAmount: Prisma.Decimal }) => ({
+        id: warehouse.id,
+        totalAmount: new Prisma.Decimal(warehouse.totalAmount),
+        paidAmount:
+          basePaidByWarehouse.get(String(warehouse.id)) ??
+          new Prisma.Decimal(0),
+      })),
+      sellerPayments,
+      'rice',
+    );
   }
 
   private async requireCustomerByTypes(
@@ -2576,9 +2967,13 @@ export class CustomerLedgerService {
     const storeSaleEntries = entries.filter(
       (entry) => entry.entryType === 'process_production_store_sale',
     );
+    const oversellEntries = entries.filter(
+      (entry) => entry.entryType === 'buyer_sale_oversell',
+    );
 
     let totalRiceKg = new Prisma.Decimal(0);
     let totalStoreKg = new Prisma.Decimal(0);
+    let totalOversoldKg = new Prisma.Decimal(0);
 
     for (const entry of riceSaleEntries) {
       if (!entry.riceQuantity) {
@@ -2599,6 +2994,19 @@ export class CustomerLedgerService {
       }
 
       totalStoreKg = totalStoreKg.plus(
+        toKilograms(
+          new Prisma.Decimal(entry.riceQuantity),
+          entry.unit ?? undefined,
+        ),
+      );
+    }
+
+    for (const entry of oversellEntries) {
+      if (!entry.riceQuantity) {
+        continue;
+      }
+
+      totalOversoldKg = totalOversoldKg.plus(
         toKilograms(
           new Prisma.Decimal(entry.riceQuantity),
           entry.unit ?? undefined,
@@ -2780,6 +3188,7 @@ export class CustomerLedgerService {
       storeSaleCount: String(storeSaleEntries.length),
       totalRicePurchasedKg: totalRiceKg.toFixed(2),
       totalStoreWeightSoldKg: totalStoreKg.toFixed(2),
+      totalOversoldKg: totalOversoldKg.toFixed(2),
       buyerByCurrency,
       buyerTransfersByCurrency,
       totalSaleAmount: singleCurrency?.totalSaleAmount ?? null,
@@ -2987,23 +3396,46 @@ export class CustomerLedgerService {
       saraf?: { id: bigint; name: string } | null;
       sarafLedgerCurrency?: { id: string; code: string; name?: string } | null;
     }>,
+    warehouseBasePaidMaps?: {
+      paddy: Map<string, Prisma.Decimal>;
+      rice: Map<string, Prisma.Decimal>;
+    },
   ) {
+    const resolveBasePaidAmount = (
+      warehouseId: bigint,
+      fallbackAmount: Prisma.Decimal | string | number,
+      kind: 'paddy' | 'rice',
+    ) => {
+      const mapped =
+        kind === 'paddy'
+          ? warehouseBasePaidMaps?.paddy.get(String(warehouseId))
+          : warehouseBasePaidMaps?.rice.get(String(warehouseId));
+
+      return mapped ?? new Prisma.Decimal(fallbackAmount ?? 0);
+    };
+
     const derivedWarehousePayments = enteringPaddies
       .map((enteringPaddy) => enteringPaddy.companyOwnedPaddyWarehouse)
       .filter((warehouse): warehouse is NonNullable<typeof warehouse> =>
         Boolean(warehouse),
       )
-      .filter((warehouse) =>
-        new Prisma.Decimal(warehouse.paidAmount ?? 0).greaterThan(0),
-      )
       .map((warehouse) => ({
+        warehouse,
+        basePaidAmount: resolveBasePaidAmount(
+          warehouse.id,
+          warehouse.paidAmount,
+          'paddy',
+        ),
+      }))
+      .filter(({ basePaidAmount }) => basePaidAmount.greaterThan(0))
+      .map(({ warehouse, basePaidAmount }) => ({
         id: `company-warehouse-payment-${String(warehouse.id)}`,
         entryType: 'company_payment' as const,
         sourceCompanyPaddyWarehouseId: String(warehouse.id),
         sourceFarmerPaddyWarehouseId: null,
-        amount: new Prisma.Decimal(warehouse.paidAmount).toFixed(2),
+        amount: basePaidAmount.toFixed(2),
         paymentType: warehouse.paymentType,
-        paidAmount: new Prisma.Decimal(warehouse.paidAmount).toFixed(2),
+        paidAmount: basePaidAmount.toFixed(2),
         remainingAmount: new Prisma.Decimal(warehouse.remainingAmount).toFixed(
           2,
         ),
@@ -3027,18 +3459,24 @@ export class CustomerLedgerService {
       }));
 
     const derivedRiceWarehousePayments = riceWarehouses
-      .filter((warehouse) =>
-        new Prisma.Decimal(warehouse.paidAmount).greaterThan(0),
-      )
       .map((warehouse) => ({
+        warehouse,
+        basePaidAmount: resolveBasePaidAmount(
+          warehouse.id,
+          warehouse.paidAmount,
+          'rice',
+        ),
+      }))
+      .filter(({ basePaidAmount }) => basePaidAmount.greaterThan(0))
+      .map(({ warehouse, basePaidAmount }) => ({
         id: `rice-warehouse-payment-${String(warehouse.id)}`,
         entryType: 'company_payment' as const,
         sourceCompanyPaddyWarehouseId: null,
         sourceFarmerPaddyWarehouseId: null,
         sourceRiceWarehouseId: String(warehouse.id),
-        amount: new Prisma.Decimal(warehouse.paidAmount).toFixed(2),
+        amount: basePaidAmount.toFixed(2),
         paymentType: warehouse.paymentType,
-        paidAmount: new Prisma.Decimal(warehouse.paidAmount).toFixed(2),
+        paidAmount: basePaidAmount.toFixed(2),
         remainingAmount: new Prisma.Decimal(warehouse.remainingAmount).toFixed(
           2,
         ),
@@ -3151,6 +3589,12 @@ export class CustomerLedgerService {
         riceQuantity: params.includeProductDetails
           ? new Prisma.Decimal(sale.soldWeight).toFixed(2)
           : null,
+        fromStockQuantity: params.includeProductDetails
+          ? this.resolveSaleSplitQuantities(sale).fromStockQuantity.toFixed(2)
+          : null,
+        oversoldQuantity: params.includeProductDetails
+          ? this.resolveSaleSplitQuantities(sale).oversoldQuantity.toFixed(2)
+          : null,
         riceVariety: params.includeProductDetails ? sale.variety : null,
         unit: params.includeProductDetails ? sale.unit : null,
         occurredAt: sale.saleDate.toISOString(),
@@ -3163,7 +3607,7 @@ export class CustomerLedgerService {
       };
     };
 
-    const entries = [
+    let entries = [
       buildEntry({
         suffix: 'sale',
         label: 'Store sale',
@@ -3200,7 +3644,7 @@ export class CustomerLedgerService {
     ].filter((entry): entry is SerializedLedgerEntry => entry !== null);
 
     if (entries.length === 0 && invoiceTotal.greaterThan(0)) {
-      return [
+      entries = [
         buildEntry({
           suffix: 'sale',
           label: 'Store sale',
@@ -3215,7 +3659,11 @@ export class CustomerLedgerService {
       ];
     }
 
-    return entries;
+    return this.appendOversellLedgerEntry(entries, sale, {
+      idPrefix: `store-variety-sale-${String(sale.id)}`,
+      variety: sale.variety,
+      billedQuantity: sale.soldWeight,
+    });
   }
 
   private serializeBuyerRiceSaleLedgerEntries(
@@ -3287,6 +3735,12 @@ export class CustomerLedgerService {
         riceQuantity: params.includeRiceDetails
           ? new Prisma.Decimal(sale.quantity).toFixed(2)
           : null,
+        fromStockQuantity: params.includeRiceDetails
+          ? this.resolveSaleSplitQuantities(sale).fromStockQuantity.toFixed(2)
+          : null,
+        oversoldQuantity: params.includeRiceDetails
+          ? this.resolveSaleSplitQuantities(sale).oversoldQuantity.toFixed(2)
+          : null,
         riceVariety: params.includeRiceDetails ? sale.riceVariety : null,
         unit: params.includeRiceDetails ? sale.unit : null,
         occurredAt: sale.saleDate.toISOString(),
@@ -3299,7 +3753,7 @@ export class CustomerLedgerService {
       };
     };
 
-    const entries = [
+    let entries = [
       buildEntry({
         suffix: 'rice',
         label: 'Rice sale',
@@ -3336,7 +3790,7 @@ export class CustomerLedgerService {
     ].filter((entry): entry is SerializedLedgerEntry => entry !== null);
 
     if (entries.length === 0 && invoiceTotal.greaterThan(0)) {
-      return [
+      entries = [
         buildEntry({
           suffix: 'rice',
           label: 'Rice sale',
@@ -3351,7 +3805,98 @@ export class CustomerLedgerService {
       ];
     }
 
-    return entries;
+    return this.appendOversellLedgerEntry(entries, sale, {
+      idPrefix: `rice-sale-${String(sale.id)}`,
+      variety: sale.riceVariety,
+      billedQuantity: sale.quantity,
+    });
+  }
+
+  private resolveSaleSplitQuantities(sale: {
+    quantity?: Prisma.Decimal | string | null;
+    soldWeight?: Prisma.Decimal | string | null;
+    unit?: string | null;
+    fromStockWeightKg?: Prisma.Decimal | string | null;
+    oversoldWeightKg?: Prisma.Decimal | string | null;
+  }) {
+    const unit = sale.unit ?? undefined;
+    const billed = new Prisma.Decimal(sale.quantity ?? sale.soldWeight ?? 0);
+
+    if (sale.fromStockWeightKg != null && sale.oversoldWeightKg != null) {
+      return {
+        fromStockQuantity: fromKilograms(sale.fromStockWeightKg, unit),
+        oversoldQuantity: fromKilograms(sale.oversoldWeightKg, unit),
+      };
+    }
+
+    return {
+      fromStockQuantity: billed,
+      oversoldQuantity: new Prisma.Decimal(0),
+    };
+  }
+
+  private appendOversellLedgerEntry(
+    entries: SerializedLedgerEntry[],
+    sale: {
+      saleDate: Date;
+      createdAt: Date;
+      updatedAt: Date;
+      billNo?: string | null;
+      unit?: string | null;
+      notes?: string | null;
+      fromStockWeightKg?: Prisma.Decimal | string | null;
+      oversoldWeightKg?: Prisma.Decimal | string | null;
+      quantity?: Prisma.Decimal | string | null;
+      soldWeight?: Prisma.Decimal | string | null;
+    },
+    params: {
+      idPrefix: string;
+      variety: string;
+      billedQuantity: Prisma.Decimal | string;
+    },
+  ): SerializedLedgerEntry[] {
+    const split = this.resolveSaleSplitQuantities({
+      ...sale,
+      quantity: params.billedQuantity,
+    });
+
+    if (split.oversoldQuantity.lessThanOrEqualTo(0)) {
+      return entries;
+    }
+
+    return [
+      ...entries,
+      {
+        id: `${params.idPrefix}-oversell`,
+        entryType: 'buyer_sale_oversell',
+        sourceCompanyPaddyWarehouseId: null,
+        sourceFarmerPaddyWarehouseId: null,
+        amount: '0.00',
+        paidAmount: '0.00',
+        remainingAmount: '0.00',
+        paymentType: null,
+        paymentChannel: null,
+        sarafId: null,
+        sarafName: null,
+        currencyId: null,
+        currencyCode: null,
+        currencyName: null,
+        paddyQuantity: null,
+        paddyVariety: null,
+        riceQuantity: split.oversoldQuantity.toFixed(2),
+        fromStockQuantity: split.fromStockQuantity.toFixed(2),
+        oversoldQuantity: split.oversoldQuantity.toFixed(2),
+        riceVariety: params.variety,
+        unit: sale.unit ?? null,
+        occurredAt: sale.saleDate.toISOString(),
+        scheduledFor: null,
+        riceStockFulfilledAt: null,
+        notes: 'Sold beyond available stock',
+        billNo: sale.billNo ?? null,
+        createdAt: sale.createdAt.toISOString(),
+        updatedAt: sale.updatedAt.toISOString(),
+      },
+    ];
   }
 
   private sortLedgerEntriesDesc(entries: SerializedLedgerEntry[]) {
@@ -4669,6 +5214,18 @@ export class CustomerLedgerService {
           notes: notes ? `${paymentLabel} — ${notes}` : paymentLabel,
           customerLedgerEntryId: entry.id,
         });
+      }
+
+      if (
+        entry.entryType === 'company_payment' &&
+        customer.type === 'paddy_seller'
+      ) {
+        await this.reconcilePaddySellerWarehousePayments(tx, customer.id);
+      } else if (
+        entry.entryType === 'company_payment' &&
+        customer.type === 'rice_seller'
+      ) {
+        await this.reconcileRiceSellerWarehousePayments(tx, customer.id);
       }
 
       return row;

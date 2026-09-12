@@ -192,7 +192,7 @@ export class EnteringPaddyService {
       ? (filters.sortBy as (typeof allowedSortFields)[number])
       : 'createdAt';
 
-    const where = {
+    const where: Prisma.EnteringPaddyWhereInput = {
       ...(filters.seasonId ? { seasonId: filters.seasonId } : {}),
       ...(filters.receivedFrom
         ? { receivedFrom: this.normalizeReceivedFrom(filters.receivedFrom) }
@@ -204,21 +204,7 @@ export class EnteringPaddyService {
               filters.trackedInWarehouse === 'true',
           }
         : {}),
-      ...(query
-        ? {
-            OR: [
-              { paddyOwner: { contains: query, mode: 'insensitive' } },
-              { billNo: { contains: query, mode: 'insensitive' } },
-              { variety: { contains: query, mode: 'insensitive' } },
-              { driverName: { contains: query, mode: 'insensitive' } },
-              { carPlate: { contains: query, mode: 'insensitive' } },
-              { phoneNo: { contains: query, mode: 'insensitive' } },
-              { address: { contains: query, mode: 'insensitive' } },
-              { receivedFrom: { contains: query, mode: 'insensitive' } },
-              { seasonName: { contains: query, mode: 'insensitive' } },
-            ],
-          }
-        : {}),
+      ...(query ? { OR: this.buildSearchFilters(query) } : {}),
     };
 
     const [items, totalCount] = await this.prisma.$transaction([
@@ -494,6 +480,29 @@ export class EnteringPaddyService {
     } catch {
       throw new BadRequestException(`${fieldName} must be a valid number`);
     }
+  }
+
+  private buildSearchFilters(query: string): Prisma.EnteringPaddyWhereInput[] {
+    const contains = { contains: query, mode: 'insensitive' as const };
+    const filters: Prisma.EnteringPaddyWhereInput[] = [
+      { paddyOwner: contains },
+      { billNo: contains },
+      { variety: contains },
+      { driverName: contains },
+      { carPlate: contains },
+      { phoneNo: contains },
+      { address: contains },
+      { seasonName: contains },
+      { customer: { name: contains } },
+      { customer: { phoneNo: contains } },
+    ];
+
+    const normalized = query.trim().toLowerCase();
+    if (normalized === 'farmer' || normalized === 'seller') {
+      filters.push({ receivedFrom: normalized });
+    }
+
+    return filters;
   }
 
   private normalizeReceivedFrom(receivedFrom?: string) {

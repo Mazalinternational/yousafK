@@ -7,7 +7,12 @@ import { Form } from "@/components/ui/form";
 import { useEffect, useMemo, type ReactNode } from "react";
 import { type Resolver, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import { formatAvailableStockFromKg } from "@/utils/weightUnit";
+import {
+  formatAvailableStockFromKg,
+  formatWeightFromKg,
+  kgToSeer,
+  SEER_KG,
+} from "@/utils/weightUnit";
 import { useCurrencies } from "../../currencies/hooks/useCurrencies";
 import { useCustomers } from "../../customer/hooks/useCustomers";
 import { useRiceWarehouseDashboard } from "../../rice-warehouses/hooks/useRiceWarehouseDashboard";
@@ -119,14 +124,22 @@ export function RiceSaleForm({
   }));
 
   const varietyOptions = useMemo(() => {
-    const rows = dashboard?.varietyBreakdown ?? [];
-    return rows
-      .filter((v) => Number(v.currentStockKg) > 0)
-      .map((v) => ({
-        value: v.variety,
-        label: `${v.variety} (${formatAvailableStockFromKg(v.currentStockKg, t)})`,
-      }));
-  }, [dashboard?.varietyBreakdown, t]);
+    const rows = [...(dashboard?.varietyBreakdown ?? [])];
+    if (
+      initialSale?.riceVariety &&
+      !rows.some((row) => row.variety === initialSale.riceVariety)
+    ) {
+      rows.push({
+        variety: initialSale.riceVariety,
+        currentStockKg: "0",
+      } as (typeof rows)[number]);
+    }
+
+    return rows.map((v) => ({
+      value: v.variety,
+      label: `${v.variety} (${formatAvailableStockFromKg(v.currentStockKg, t)})`,
+    }));
+  }, [dashboard?.varietyBreakdown, initialSale?.riceVariety, t]);
 
   const paymentTypeOptions = RICE_PAYMENT_TYPE_OPTIONS.map((paymentType) => ({
     value: paymentType,
@@ -181,10 +194,35 @@ export function RiceSaleForm({
   const paymentType = useWatch({ control: form.control, name: "paymentType" }) || "";
   const paymentChannel = useWatch({ control: form.control, name: "paymentChannel" }) || "cash";
   const quantityStr = useWatch({ control: form.control, name: "quantity" });
+  const riceVariety = useWatch({ control: form.control, name: "riceVariety" });
   const ratePerSeerStr = useWatch({ control: form.control, name: "ratePerSeer" });
   const totalAmountStr = useWatch({ control: form.control, name: "totalAmount" });
   const loadingAmountStr = useWatch({ control: form.control, name: "loadingAmount" });
   const riceBagsAmountStr = useWatch({ control: form.control, name: "riceBagsAmount" });
+
+  const selectedAvailableKg = useMemo(() => {
+    const row = dashboard?.varietyBreakdown?.find((item) => item.variety === riceVariety);
+    let availableKg = Number(row?.currentStockKg ?? 0);
+
+    if (
+      initialSale &&
+      initialSale.riceVariety === riceVariety &&
+      Number.isFinite(Number(initialSale.fromStockWeightKg))
+    ) {
+      availableKg += Number(initialSale.fromStockWeightKg);
+    }
+
+    return Number.isFinite(availableKg) ? Math.max(availableKg, 0) : 0;
+  }, [dashboard?.varietyBreakdown, initialSale, riceVariety]);
+
+  const oversoldSeer = useMemo(() => {
+    const requested = Number(quantityStr);
+    if (!Number.isFinite(requested) || requested <= 0) {
+      return 0;
+    }
+
+    return Math.max(0, requested - kgToSeer(selectedAvailableKg));
+  }, [quantityStr, selectedAvailableKg]);
 
   const invoiceTotal = useMemo(
     () =>
@@ -299,6 +337,14 @@ export function RiceSaleForm({
               type="number"
               characterRestriction="none"
             />
+            {oversoldSeer > 0.0001 ? (
+              <p className="sm:col-span-3 text-sm text-amber-700">
+                {t("common:sale_oversell_warning", {
+                  extra: formatWeightFromKg(oversoldSeer * SEER_KG, t),
+                  available: formatAvailableStockFromKg(selectedAvailableKg, t),
+                })}
+              </p>
+            ) : null}
 
             <InputField
               name="ratePerSeer"

@@ -5,6 +5,7 @@ export type BuyerLedgerEntryTypeFilter =
   | "all"
   | "buyer_rice_sale"
   | "process_production_store_sale"
+  | "buyer_sale_oversell"
   | "buyer_payment"
   | "buyer_payment_on_behalf"
   | "buyer_payment_received_on_behalf"

@@ -7,6 +7,7 @@ import { Prisma } from '@prisma/client';
 import {
   APP_WEIGHT_UNIT,
   normalizeWeightUnit,
+  resolveFromStockWeightKg,
   toKilograms,
 } from '../../common/weight/weight-unit.util.js';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
@@ -416,6 +417,8 @@ export class RiceWarehouseService {
           riceVariety: true,
           quantity: true,
           unit: true,
+          fromStockWeightKg: true,
+          oversoldWeightKg: true,
           saleDate: true,
           totalAmount: true,
           paidAmount: true,
@@ -500,7 +503,13 @@ export class RiceWarehouseService {
 
     const riceOutTotalsSales = riceSales.reduce(
       (sum: Prisma.Decimal, entry: any) =>
-        sum.plus(toKilograms(new Prisma.Decimal(entry.quantity), entry.unit)),
+        sum.plus(
+          resolveFromStockWeightKg({
+            fromStockWeightKg: entry.fromStockWeightKg,
+            fallbackQuantity: entry.quantity,
+            fallbackUnit: entry.unit,
+          }),
+        ),
       new Prisma.Decimal(0),
     );
 
@@ -595,7 +604,11 @@ export class RiceWarehouseService {
       };
 
       current.riceOutKg = current.riceOutKg.plus(
-        toKilograms(new Prisma.Decimal(entry.quantity), entry.unit),
+        resolveFromStockWeightKg({
+          fromStockWeightKg: entry.fromStockWeightKg,
+          fallbackQuantity: entry.quantity,
+          fallbackUnit: entry.unit,
+        }),
       );
 
       movementSeriesMap.set(date, current);
@@ -683,7 +696,11 @@ export class RiceWarehouseService {
     for (const entry of riceSales) {
       const current = touchVariety(entry.riceVariety);
       current.totalOutKg = current.totalOutKg.plus(
-        toKilograms(new Prisma.Decimal(entry.quantity), entry.unit),
+        resolveFromStockWeightKg({
+          fromStockWeightKg: entry.fromStockWeightKg,
+          fallbackQuantity: entry.quantity,
+          fallbackUnit: entry.unit,
+        }),
       );
     }
 
@@ -807,10 +824,11 @@ export class RiceWarehouseService {
         };
       }),
       ...riceSales.map((entry: any) => {
-        const quantityKg = toKilograms(
-          new Prisma.Decimal(entry.quantity),
-          entry.unit,
-        );
+        const quantityKg = resolveFromStockWeightKg({
+          fromStockWeightKg: entry.fromStockWeightKg,
+          fallbackQuantity: entry.quantity,
+          fallbackUnit: entry.unit,
+        });
 
         return {
           id: `sale-${String(entry.id)}`,

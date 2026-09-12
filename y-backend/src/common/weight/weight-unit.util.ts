@@ -52,3 +52,61 @@ export function kilogramsToSeer(
 ): Prisma.Decimal {
   return new Prisma.Decimal(kilograms).dividedBy(SEER_KG);
 }
+
+export function fromKilograms(
+  kilograms: Prisma.Decimal | string | number,
+  unit?: string,
+): Prisma.Decimal {
+  const kg = new Prisma.Decimal(kilograms);
+  const normalized = unit?.trim().toLowerCase() ?? APP_WEIGHT_UNIT;
+
+  if (normalized === 'ton') {
+    return kg.dividedBy(1000);
+  }
+
+  if (normalized === 'kg' || normalized === 'one_kg') {
+    return kg;
+  }
+
+  return kilogramsToSeer(kg);
+}
+
+export function splitQuantityAgainstStock(
+  requestedKg: Prisma.Decimal,
+  availableKg: Prisma.Decimal,
+) {
+  const fromStockWeightKg = Prisma.Decimal.min(
+    requestedKg,
+    Prisma.Decimal.max(availableKg, 0),
+  );
+  const oversoldWeightKg = Prisma.Decimal.max(
+    requestedKg.minus(fromStockWeightKg),
+    0,
+  );
+
+  return {
+    fromStockWeightKg,
+    oversoldWeightKg,
+  };
+}
+
+export function resolveFromStockWeightKg(params: {
+  fromStockWeightKg?: Prisma.Decimal | string | number | null;
+  fallbackSoldWeightKg?: Prisma.Decimal | string | number | null;
+  fallbackQuantity?: Prisma.Decimal | string | number | null;
+  fallbackUnit?: string;
+}): Prisma.Decimal {
+  if (params.fromStockWeightKg != null) {
+    return new Prisma.Decimal(params.fromStockWeightKg);
+  }
+
+  if (params.fallbackSoldWeightKg != null) {
+    return new Prisma.Decimal(params.fallbackSoldWeightKg);
+  }
+
+  if (params.fallbackQuantity != null) {
+    return toKilograms(params.fallbackQuantity, params.fallbackUnit);
+  }
+
+  return new Prisma.Decimal(0);
+}

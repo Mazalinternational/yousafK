@@ -69,30 +69,29 @@ export function VarietyStockPanel({
               {t("common:loading", { name: t("common:variety") })}
             </p>
           ) : pooled ? (
-            !stockRow ? (
-              <p className="text-sm text-muted-foreground">
-                {t("common:store_variety_stock_empty")}
-              </p>
-            ) : (
-              <PooledStockCard
-                row={stockRow}
-                canWrite={canWrite}
-                seasonId={seasonId}
-                onSell={() =>
-                  setSellVariety({
-                    variety: POOLED_SALE_VARIETY,
-                    availableWeightKg: stockRow.availableWeightKg,
-                  })
+            <PooledStockCard
+              row={
+                stockRow ?? {
+                  totalWeightKg: "0",
+                  availableWeightKg: "0",
+                  entryCount: 0,
                 }
-              />
-            )
+              }
+              canWrite={canWrite}
+              seasonId={seasonId}
+              onSell={() =>
+                setSellVariety({
+                  variety: POOLED_SALE_VARIETY,
+                  availableWeightKg: stockRow?.availableWeightKg ?? "0",
+                })
+              }
+            />
           ) : (data?.varieties.length ?? 0) === 0 ? (
             <p className="text-sm text-muted-foreground">{t("common:store_variety_stock_empty")}</p>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {data?.varieties.map((row) => {
                 const available = Number(row.availableWeightKg);
-                const canSell = Number.isFinite(available) && available > 0.0001;
                 const noStockLeft =
                   Number.isFinite(available) &&
                   Number(row.totalWeightKg) > 0 &&
@@ -128,7 +127,7 @@ export function VarietyStockPanel({
                       type="button"
                       size="sm"
                       className="mt-3 hover:cursor-pointer"
-                      disabled={!canSell || !seasonId || !canWrite}
+                      disabled={!seasonId || !canWrite}
                       onClick={() =>
                         setSellVariety({
                           variety: row.variety,
@@ -199,7 +198,6 @@ function PooledStockCard({
   const { t, i18n } = useTranslation();
   const locale = getDisplayLocale(i18n.language);
   const available = Number(row.availableWeightKg);
-  const canSell = Number.isFinite(available) && available > 0.0001;
   const noStockLeft =
     Number.isFinite(available) &&
     Number(row.totalWeightKg) > 0 &&
@@ -230,7 +228,7 @@ function PooledStockCard({
         type="button"
         size="sm"
         className="mt-3 hover:cursor-pointer"
-        disabled={!canSell || !seasonId || !canWrite}
+        disabled={!seasonId || !canWrite}
         onClick={onSell}
       >
         {t("common:sell")}

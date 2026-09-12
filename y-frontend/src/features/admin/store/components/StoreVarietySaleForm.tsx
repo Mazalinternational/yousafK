@@ -8,7 +8,7 @@ import { Form } from "@/components/ui/form";
 import { useEffect, useMemo, type ReactNode } from "react";
 import { type Resolver, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import { formatWeightFromKg } from "@/utils/weightUnit";
+import { formatWeightFromKg, kgToSeer, SEER_KG } from "@/utils/weightUnit";
 import { formatDisplayAmount } from "@/utils/displayLocale";
 import { getDisplayLocale } from "@/utils/displayLocale";
 import { useCurrencies } from "../../currencies/hooks/useCurrencies";
@@ -163,6 +163,25 @@ export function StoreVarietySaleForm({
   const loadingAmountStr = useWatch({ control: form.control, name: "loadingAmount" });
   const riceBagsAmountStr = useWatch({ control: form.control, name: "riceBagsAmount" });
   const paidAmountStr = useWatch({ control: form.control, name: "paidAmount" });
+
+  const oversoldSeer = useMemo(() => {
+    const requested = Number(soldWeightStr);
+    if (!Number.isFinite(requested) || requested <= 0) {
+      return 0;
+    }
+
+    return Math.max(0, requested - kgToSeer(availableWeightKg));
+  }, [availableWeightKg, soldWeightStr]);
+
+  const oversellWarning =
+    oversoldSeer > 0.0001 ? (
+      <p className="text-sm text-amber-700">
+        {t("common:sale_oversell_warning", {
+          extra: formatWeightFromKg(oversoldSeer * SEER_KG, t),
+          available: formatWeightFromKg(availableWeightKg, t),
+        })}
+      </p>
+    ) : null;
 
   const invoiceTotal = useMemo(
     () =>
@@ -380,6 +399,7 @@ export function StoreVarietySaleForm({
                       weight: formatWeightFromKg(availableWeightKg, t),
                     })}
                   </p>
+                  {oversellWarning}
                   <p>{t("common:store_variety_sale_bill_hint")}</p>
                   {initialSale ? (
                     <p className="font-medium text-foreground">{initialSale.billNo}</p>
@@ -537,6 +557,7 @@ export function StoreVarietySaleForm({
                   weight: formatWeightFromKg(availableWeightKg, t),
                 })}
               </p>
+              {oversellWarning}
               <p className="text-xs text-muted-foreground">
                 {t("common:store_variety_sale_bill_hint")}
               </p>
