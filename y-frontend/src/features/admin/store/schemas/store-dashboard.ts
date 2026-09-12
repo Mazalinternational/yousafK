@@ -6,6 +6,7 @@ export const StoreVarietyStockItemSchema = z.object({
   entryCount: z.number(),
   totalWeightKg: z.string(),
   availableWeightKg: z.string(),
+  remainingWeightKg: z.string().optional(),
 });
 
 export const StoreDashboardOverviewSchema = z.object({
@@ -13,6 +14,7 @@ export const StoreDashboardOverviewSchema = z.object({
   label: z.string(),
   entryCount: z.number(),
   totalWeightKg: z.string(),
+  remainingWeightKg: z.string().optional(),
 });
 
 export const StoreDashboardRecentSchema = z.object({

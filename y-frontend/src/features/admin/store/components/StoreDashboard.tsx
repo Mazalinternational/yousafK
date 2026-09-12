@@ -15,7 +15,11 @@ import {
 import { sectionVariants, staggerContainerVariants } from "@/lib/motion";
 import { dateFormatter } from "@/utils/dataFormatters";
 import { formatDisplayNumber, getDisplayLocale } from "@/utils/displayLocale";
-import { formatQuantityWithUnit, formatWeightFromKg } from "@/utils/weightUnit";
+import {
+  formatQuantityWithUnit,
+  formatWeightFromKg,
+  stockValueClassName,
+} from "@/utils/weightUnit";
 import { useStoreDashboard } from "../hooks/useStoreDashboard";
 import type { StoreType } from "../schemas/store";
 import { isPooledStoreType } from "../utils/storePooledTypes";
@@ -91,11 +95,15 @@ export function StoreDashboard() {
               <Card className="h-full transition-colors hover:bg-muted/30">
                 <CardHeader className="pb-2">
                   <CardDescription>{t(`common:${item.storeType}`)}</CardDescription>
-                  <CardTitle className="text-base tabular-nums">
-                    {formatWeightFromKg(item.totalWeightKg, t)}
+                  <CardTitle
+                    className={`text-base tabular-nums ${stockValueClassName(item.remainingWeightKg ?? item.totalWeightKg) ?? ""}`}
+                  >
+                    {formatWeightFromKg(item.remainingWeightKg ?? item.totalWeightKg, t)}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="text-sm text-muted-foreground">
+                  {t("common:store_stock_total")}: {formatWeightFromKg(item.totalWeightKg, t)}
+                  <br />
                   {t("common:store_entries_count", {
                     count: formatDisplayNumber(item.entryCount, locale),
                   })}
@@ -200,18 +208,23 @@ function PooledDashboardStock({
   row: {
     totalWeightKg: string;
     availableWeightKg: string;
+    remainingWeightKg?: string;
     entryCount: number;
   };
   locale: string;
 }) {
   const { t } = useTranslation();
+  const remainingKg = row.remainingWeightKg ?? row.availableWeightKg;
 
   return (
     <div className="rounded-md border px-3 py-2 text-sm">
       <p className="font-medium">{t("common:store_pooled_stock_label")}</p>
       <p className="mt-1 text-muted-foreground tabular-nums">
         {t("common:store_stock_total")}: {formatWeightFromKg(row.totalWeightKg, t)} ·{" "}
-        {t("common:store_stock_remaining")}: {formatWeightFromKg(row.availableWeightKg, t)} ·{" "}
+        <span className={stockValueClassName(remainingKg)}>
+          {t("common:store_stock_remaining")}: {formatWeightFromKg(remainingKg, t)}
+        </span>{" "}
+        ·{" "}
         {t("common:store_entries_count", {
           count: formatDisplayNumber(row.entryCount, locale),
         })}

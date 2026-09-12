@@ -137,7 +137,7 @@ export function RiceSaleForm({
 
     return rows.map((v) => ({
       value: v.variety,
-      label: `${v.variety} (${formatAvailableStockFromKg(v.currentStockKg, t)})`,
+      label: `${v.variety} (${formatAvailableStockFromKg(v.sellableStockKg ?? v.currentStockKg, t)})`,
     }));
   }, [dashboard?.varietyBreakdown, initialSale?.riceVariety, t]);
 
@@ -202,7 +202,7 @@ export function RiceSaleForm({
 
   const selectedAvailableKg = useMemo(() => {
     const row = dashboard?.varietyBreakdown?.find((item) => item.variety === riceVariety);
-    let availableKg = Number(row?.currentStockKg ?? 0);
+    let availableKg = Number(row?.sellableStockKg ?? Math.max(Number(row?.currentStockKg ?? 0), 0));
 
     if (
       initialSale &&

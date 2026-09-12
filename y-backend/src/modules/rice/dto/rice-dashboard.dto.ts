@@ -57,6 +57,7 @@ export class RiceDashboardVarietyStockDto {
   totalOutKg: string;
   currentStockKg: string;
   currentStockTon: string;
+  sellableStockKg: string;
   entryCount: number;
   /** Rice owed to farmers for this variety (farmer_obligation ledger entries). */
   farmerRiceObligationKg: string;

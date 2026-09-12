@@ -51,6 +51,7 @@ export const RiceDashboardVarietyStockSchema = z.object({
   totalOutKg: z.string(),
   currentStockKg: z.string(),
   currentStockTon: z.string(),
+  sellableStockKg: z.string().optional(),
   entryCount: z.number(),
   farmerRiceObligationKg: z.string(),
   farmerRiceReturnedKg: z.string(),

@@ -13,6 +13,10 @@ export function kgToSeer(kilograms: string | number): number {
   return Number(kilograms) / SEER_KG;
 }
 
+export function stockValueClassName(kilograms: string | number) {
+  return Number(kilograms) < -0.0001 ? "text-red-600 dark:text-red-400" : undefined;
+}
+
 export function seerToKg(seer: string | number): number {
   return Number(seer) * SEER_KG;
 }
@@ -58,7 +62,13 @@ export function formatAvailableStockFromKg(
   const maxFd = options?.maxFractionDigits ?? 2;
   const locale = options?.locale ?? "en-US";
   const kg = Number(kilograms);
-  if (Number.isNaN(kg) || kg <= 0) {
+  if (Number.isNaN(kg)) {
+    return `0 ${t("common:seer_unit_short")}`;
+  }
+  if (kg < 0) {
+    return formatKilogramsAsSeer(kg, t, locale);
+  }
+  if (kg === 0) {
     return `0 ${t("common:seer_unit_short")}`;
   }
   const seer = kg / SEER_KG;

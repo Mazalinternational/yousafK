@@ -503,13 +503,7 @@ export class RiceWarehouseService {
 
     const riceOutTotalsSales = riceSales.reduce(
       (sum: Prisma.Decimal, entry: any) =>
-        sum.plus(
-          resolveFromStockWeightKg({
-            fromStockWeightKg: entry.fromStockWeightKg,
-            fallbackQuantity: entry.quantity,
-            fallbackUnit: entry.unit,
-          }),
-        ),
+        sum.plus(toKilograms(new Prisma.Decimal(entry.quantity), entry.unit)),
       new Prisma.Decimal(0),
     );
 
@@ -555,10 +549,7 @@ export class RiceWarehouseService {
       processRiceTotals.totalInKg,
     );
 
-    const currentStockKg = Prisma.Decimal.max(
-      combinedRiceInKg.minus(riceOutTotals),
-      0,
-    );
+    const currentStockKg = combinedRiceInKg.minus(riceOutTotals);
 
     const movementSeriesMap = new Map<
       string,
@@ -604,11 +595,7 @@ export class RiceWarehouseService {
       };
 
       current.riceOutKg = current.riceOutKg.plus(
-        resolveFromStockWeightKg({
-          fromStockWeightKg: entry.fromStockWeightKg,
-          fallbackQuantity: entry.quantity,
-          fallbackUnit: entry.unit,
-        }),
+        toKilograms(new Prisma.Decimal(entry.quantity), entry.unit),
       );
 
       movementSeriesMap.set(date, current);
@@ -655,6 +642,7 @@ export class RiceWarehouseService {
       warehouseInKg: Prisma.Decimal;
       processInKg: Prisma.Decimal;
       totalOutKg: Prisma.Decimal;
+      physicalOutKg: Prisma.Decimal;
       warehouseEntryCount: number;
       processEntryCount: number;
     };
@@ -663,6 +651,7 @@ export class RiceWarehouseService {
       warehouseInKg: new Prisma.Decimal(0),
       processInKg: new Prisma.Decimal(0),
       totalOutKg: new Prisma.Decimal(0),
+      physicalOutKg: new Prisma.Decimal(0),
       warehouseEntryCount: 0,
       processEntryCount: 0,
     });
@@ -695,25 +684,33 @@ export class RiceWarehouseService {
 
     for (const entry of riceSales) {
       const current = touchVariety(entry.riceVariety);
-      current.totalOutKg = current.totalOutKg.plus(
-        resolveFromStockWeightKg({
-          fromStockWeightKg: entry.fromStockWeightKg,
-          fallbackQuantity: entry.quantity,
-          fallbackUnit: entry.unit,
-        }),
+      const billedKg = toKilograms(
+        new Prisma.Decimal(entry.quantity),
+        entry.unit,
       );
+      const fromStockKg = resolveFromStockWeightKg({
+        fromStockWeightKg: entry.fromStockWeightKg,
+        fallbackQuantity: entry.quantity,
+        fallbackUnit: entry.unit,
+      });
+      current.totalOutKg = current.totalOutKg.plus(billedKg);
+      current.physicalOutKg = current.physicalOutKg.plus(fromStockKg);
     }
 
     for (const entry of riceCharities) {
       const current = touchVariety(entry.riceVariety);
-      current.totalOutKg = current.totalOutKg.plus(
-        toKilograms(new Prisma.Decimal(entry.quantity), entry.unit),
+      const quantityKg = toKilograms(
+        new Prisma.Decimal(entry.quantity),
+        entry.unit,
       );
+      current.totalOutKg = current.totalOutKg.plus(quantityKg);
+      current.physicalOutKg = current.physicalOutKg.plus(quantityKg);
     }
 
     for (const entry of farmerReturnIssues) {
       const current = touchVariety(entry.variety);
       current.totalOutKg = current.totalOutKg.plus(entry.quantityKg);
+      current.physicalOutKg = current.physicalOutKg.plus(entry.quantityKg);
     }
 
     const riceVarietyStockRows =
@@ -738,8 +735,9 @@ export class RiceWarehouseService {
     const varietyBreakdown = Array.from(varietyMap.entries())
       .map(([variety, totals]) => {
         const totalInKg = totals.warehouseInKg.plus(totals.processInKg);
-        const currentStockKg = Prisma.Decimal.max(
-          totalInKg.minus(totals.totalOutKg),
+        const currentStockKg = totalInKg.minus(totals.totalOutKg);
+        const sellableStockKg = Prisma.Decimal.max(
+          totalInKg.minus(totals.physicalOutKg),
           0,
         );
         const farmerRice = farmerRiceByVariety.get(variety);
@@ -752,6 +750,7 @@ export class RiceWarehouseService {
           totalOutKg: totals.totalOutKg.toFixed(2),
           currentStockKg: currentStockKg.toFixed(2),
           currentStockTon: currentStockKg.dividedBy(1000).toFixed(2),
+          sellableStockKg: sellableStockKg.toFixed(2),
           entryCount: totals.warehouseEntryCount + totals.processEntryCount,
           farmerRiceObligationKg: (
             farmerRice?.obligationKg ?? new Prisma.Decimal(0)
@@ -824,11 +823,10 @@ export class RiceWarehouseService {
         };
       }),
       ...riceSales.map((entry: any) => {
-        const quantityKg = resolveFromStockWeightKg({
-          fromStockWeightKg: entry.fromStockWeightKg,
-          fallbackQuantity: entry.quantity,
-          fallbackUnit: entry.unit,
-        });
+        const quantityKg = toKilograms(
+          new Prisma.Decimal(entry.quantity),
+          entry.unit,
+        );
 
         return {
           id: `sale-${String(entry.id)}`,

@@ -2,8 +2,10 @@ export type StoreVarietyStockItem = {
   variety: string;
   entryCount: number;
   totalWeightKg: string;
-  /** Remaining after sales (total − sold); ready for future sell flows */
+  /** Physical remaining after stock taken for sales; used when selling. */
   availableWeightKg: string;
+  /** Book remaining including extra sold beyond stock; can be negative. */
+  remainingWeightKg: string;
 };
 
 export type StoreDashboardOverviewItem = {
@@ -11,6 +13,7 @@ export type StoreDashboardOverviewItem = {
   label: string;
   entryCount: number;
   totalWeightKg: string;
+  remainingWeightKg: string;
 };
 
 export type StoreDashboardRecentItem = {

@@ -12,7 +12,7 @@ import {
   isPooledStoreType,
   POOLED_SALE_VARIETY,
 } from "../utils/storePooledTypes";
-import { formatWeightFromKg } from "@/utils/weightUnit";
+import { formatWeightFromKg, stockValueClassName } from "@/utils/weightUnit";
 import { formatDisplayNumber, getDisplayLocale } from "@/utils/displayLocale";
 import { StoreVarietySaleForm } from "./StoreVarietySaleForm";
 
@@ -91,6 +91,7 @@ export function VarietyStockPanel({
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {data?.varieties.map((row) => {
+                const remainingKg = row.remainingWeightKg ?? row.availableWeightKg;
                 const available = Number(row.availableWeightKg);
                 const noStockLeft =
                   Number.isFinite(available) &&
@@ -111,7 +112,9 @@ export function VarietyStockPanel({
                       <span className="text-muted-foreground">
                         {t("common:store_stock_remaining")}:{" "}
                       </span>
-                      <span className="font-semibold">{formatWeightFromKg(row.availableWeightKg, t)}</span>
+                      <span className={`font-semibold ${stockValueClassName(remainingKg) ?? ""}`}>
+                        {formatWeightFromKg(remainingKg, t)}
+                      </span>
                     </p>
                     <p className="text-xs text-muted-foreground tabular-nums">
                       {t("common:store_entries_count", {
@@ -189,6 +192,7 @@ function PooledStockCard({
   row: {
     totalWeightKg: string;
     availableWeightKg: string;
+    remainingWeightKg?: string;
     entryCount: number;
   };
   canWrite: boolean;
@@ -197,6 +201,7 @@ function PooledStockCard({
 }) {
   const { t, i18n } = useTranslation();
   const locale = getDisplayLocale(i18n.language);
+  const remainingKg = row.remainingWeightKg ?? row.availableWeightKg;
   const available = Number(row.availableWeightKg);
   const noStockLeft =
     Number.isFinite(available) &&
@@ -212,7 +217,9 @@ function PooledStockCard({
       </p>
       <p className="text-sm">
         <span className="text-muted-foreground">{t("common:store_stock_remaining")}: </span>
-        <span className="font-semibold">{formatWeightFromKg(row.availableWeightKg, t)}</span>
+        <span className={`font-semibold ${stockValueClassName(remainingKg) ?? ""}`}>
+          {formatWeightFromKg(remainingKg, t)}
+        </span>
       </p>
       <p className="text-xs text-muted-foreground tabular-nums">
         {t("common:store_entries_count", {

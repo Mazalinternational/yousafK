@@ -1029,10 +1029,14 @@ export class StoreService {
 
     const overview = varietyByStoreType.map(({ storeType, varieties }) => {
       let totalKg = new Prisma.Decimal(0);
+      let remainingKg = new Prisma.Decimal(0);
       let entryCount = 0;
 
       for (const row of varieties) {
         totalKg = totalKg.plus(new Prisma.Decimal(row.totalWeightKg));
+        remainingKg = remainingKg.plus(
+          new Prisma.Decimal(row.remainingWeightKg ?? row.availableWeightKg),
+        );
         entryCount += Number(row.entryCount);
       }
 
@@ -1041,6 +1045,7 @@ export class StoreService {
         label: storeType,
         entryCount,
         totalWeightKg: totalKg.toFixed(2),
+        remainingWeightKg: remainingKg.toFixed(2),
       };
     });
 
@@ -1113,6 +1118,7 @@ export class StoreService {
       Array<{
         totalWeightKg: string;
         soldWeightKg: string;
+        billedSoldWeightKg: string;
         entryCount: number;
       }>
     >(Prisma.sql`
@@ -1135,7 +1141,9 @@ export class StoreService {
           AND se."store_type" = ${storeType}::"StoreType"
       ),
       "sale_totals" AS (
-        SELECT COALESCE(SUM(COALESCE(svs."from_stock_weight_kg", svs."sold_weight_kg")), 0) AS "sale_sold_kg"
+        SELECT
+          COALESCE(SUM(COALESCE(svs."from_stock_weight_kg", svs."sold_weight_kg")), 0) AS "sale_from_stock_kg",
+          COALESCE(SUM(svs."sold_weight_kg"), 0) AS "sale_billed_kg"
         FROM "store_variety_sales" svs
         WHERE svs."season_id" = ${seasonId}
           AND svs."store_type" = ${storeType}::"StoreType"
@@ -1148,7 +1156,8 @@ export class StoreService {
       )
       SELECT
         et."total_kg"::text AS "totalWeightKg",
-        (et."entry_sold_kg" + st."sale_sold_kg" + pt."process_consumed_kg")::text AS "soldWeightKg",
+        (et."entry_sold_kg" + st."sale_from_stock_kg" + pt."process_consumed_kg")::text AS "soldWeightKg",
+        (et."entry_sold_kg" + st."sale_billed_kg" + pt."process_consumed_kg")::text AS "billedSoldWeightKg",
         et."entry_count" AS "entryCount"
       FROM "entry_totals" et
       CROSS JOIN "sale_totals" st
@@ -1158,6 +1167,7 @@ export class StoreService {
     const row = rows[0] ?? {
       totalWeightKg: '0',
       soldWeightKg: '0',
+      billedSoldWeightKg: '0',
       entryCount: 0,
     };
 
@@ -1165,6 +1175,7 @@ export class StoreService {
       variety: POOLED_SALE_VARIETY,
       totalWeightKg: row.totalWeightKg,
       soldWeightKg: row.soldWeightKg,
+      billedSoldWeightKg: row.billedSoldWeightKg,
       entryCount: row.entryCount,
     });
 
@@ -1185,6 +1196,7 @@ export class StoreService {
         variety: string;
         totalWeightKg: string;
         soldWeightKg: string;
+        billedSoldWeightKg: string;
         entryCount: number;
       }>
     >(Prisma.sql`
@@ -1211,7 +1223,8 @@ export class StoreService {
       "sale_agg" AS (
         SELECT
           svs."variety" AS "variety",
-          COALESCE(SUM(COALESCE(svs."from_stock_weight_kg", svs."sold_weight_kg")), 0) AS "sale_sold_kg"
+          COALESCE(SUM(COALESCE(svs."from_stock_weight_kg", svs."sold_weight_kg")), 0) AS "sale_from_stock_kg",
+          COALESCE(SUM(svs."sold_weight_kg"), 0) AS "sale_billed_kg"
         FROM "store_variety_sales" svs
         WHERE svs."season_id" = ${seasonId}
           AND svs."store_type" = ${storeType}::"StoreType"
@@ -1225,7 +1238,8 @@ export class StoreService {
       SELECT
         v."variety" AS "variety",
         COALESCE(e."total_kg", 0)::text AS "totalWeightKg",
-        (COALESCE(e."entry_sold_kg", 0) + COALESCE(s."sale_sold_kg", 0))::text AS "soldWeightKg",
+        (COALESCE(e."entry_sold_kg", 0) + COALESCE(s."sale_from_stock_kg", 0))::text AS "soldWeightKg",
+        (COALESCE(e."entry_sold_kg", 0) + COALESCE(s."sale_billed_kg", 0))::text AS "billedSoldWeightKg",
         COALESCE(e."entry_count", 0) AS "entryCount"
       FROM "varieties" v
       LEFT JOIN "entry_agg" e ON e."variety" = v."variety"
@@ -1239,17 +1253,23 @@ export class StoreService {
     variety: string;
     totalWeightKg: string;
     soldWeightKg: string;
+    billedSoldWeightKg?: string;
     entryCount: number;
   }) {
     const total = new Prisma.Decimal(row.totalWeightKg);
-    const sold = new Prisma.Decimal(row.soldWeightKg);
-    const available = Prisma.Decimal.max(total.minus(sold), 0);
+    const physicalSold = new Prisma.Decimal(row.soldWeightKg);
+    const billedSold = new Prisma.Decimal(
+      row.billedSoldWeightKg ?? row.soldWeightKg,
+    );
+    const available = Prisma.Decimal.max(total.minus(physicalSold), 0);
+    const remaining = total.minus(billedSold);
 
     return {
       variety: row.variety,
       entryCount: Number(row.entryCount),
       totalWeightKg: total.toFixed(2),
       availableWeightKg: available.toFixed(2),
+      remainingWeightKg: remaining.toFixed(2),
     };
   }
 
@@ -1528,6 +1548,7 @@ export class StoreService {
       label: storeType,
       entryCount: 0,
       totalWeightKg: '0.00',
+      remainingWeightKg: '0.00',
     };
   }
 
