@@ -72,6 +72,10 @@ export const apiClient = axios.create({
   withCredentials: true,
   xsrfCookieName: undefined,
   xsrfHeaderName: undefined,
+  headers: {
+    "Content-Type": "application/json;charset=UTF-8",
+    Accept: "application/json",
+  },
 });
 
 apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {

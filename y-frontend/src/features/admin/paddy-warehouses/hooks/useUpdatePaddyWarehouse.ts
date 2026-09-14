@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { getErrorMessage } from "@/utils/getErrorMessage";
 import { useTranslation } from "react-i18next";
 import type { PaddyWarehouseFormValues } from "../schemas/paddy-warehouse";
+import { buildCompanyPaddyWarehousePayload } from "../utils/buildCompanyPaddyWarehousePayload";
 
 export const useUpdatePaddyWarehouse = () => {
   const queryClient = useQueryClient();
@@ -11,7 +12,10 @@ export const useUpdatePaddyWarehouse = () => {
 
   return useMutation({
     mutationFn: ({ id, values }: { id: string; values: PaddyWarehouseFormValues }) =>
-      apiClient.patch(`campany_owned_paddy/${id}`, values),
+      apiClient.patch(
+        `campany_owned_paddy/${id}`,
+        buildCompanyPaddyWarehousePayload(values),
+      ),
     onSuccess: () => {
       toast.success(t("common:update_success", { name: t("admin:paddy_warehouse") }));
       queryClient.invalidateQueries({ queryKey: ["paddy-warehouses"] });

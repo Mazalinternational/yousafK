@@ -37,7 +37,7 @@ export class SarafiController {
   }
 
   @Get()
-  @RequirePermissions('sarafi.read')
+  @RequirePermissions(['sarafi.read', 'sarafi_ledgers.read'], 'any')
   async findAll(@Query() query: FindSarafsQueryDto) {
     const result = await this.sarafService.findAll(query);
     return {

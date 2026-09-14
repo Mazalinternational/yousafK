@@ -24,18 +24,35 @@ export const useSarafs = (filters: {
   return useQuery<PaginatedResponse<Saraf>>({
     queryKey: ["sarafi", selectedSeasonId, filters],
     queryFn: async () => {
+      // Host WAF (ModSecurity) often false-positives on `sortBy=name` as SQLi.
+      // Sort by createdAt on the server, then by name in the browser.
+      const wantsNameSort = filters.sortBy === "name";
+      const sortDirection =
+        filters.sortByAction || filters.sortDirection || undefined;
+
       const response = await apiClient.get("sarafi", {
         params: {
           pageNumber: filters.pageNumber || 1,
           pageSize: filters.pageSize || 10,
           query: filters.query || undefined,
-          sortBy: filters.sortBy || undefined,
-          sortByAction: filters.sortByAction || filters.sortDirection || undefined,
+          sortBy: wantsNameSort ? "createdAt" : filters.sortBy || undefined,
+          sortByAction: sortDirection,
           seasonId: filters.seasonId || undefined,
         },
       });
 
-      return (response.data as SarafsListApiResponse).data;
+      const data = (response.data as SarafsListApiResponse).data;
+      if (!wantsNameSort || !data?.items?.length) {
+        return data;
+      }
+
+      const direction = sortDirection === "desc" ? -1 : 1;
+      return {
+        ...data,
+        items: [...data.items].sort(
+          (left, right) => direction * left.name.localeCompare(right.name, "fa"),
+        ),
+      };
     },
     placeholderData: keepPreviousData,
     enabled: Boolean(selectedSeasonId),

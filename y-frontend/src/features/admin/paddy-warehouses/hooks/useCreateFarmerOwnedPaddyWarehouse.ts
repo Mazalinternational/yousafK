@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { getErrorMessage } from "@/utils/getErrorMessage";
 import { useTranslation } from "react-i18next";
 import type { FarmerOwnedPaddyWarehouseFormValues } from "../schemas/farmer-owned-paddy-warehouse";
+import { buildFarmerOwnedPaddyWarehousePayload } from "../utils/buildFarmerOwnedPaddyWarehousePayload";
 
 export const useCreateFarmerOwnedPaddyWarehouse = () => {
   const queryClient = useQueryClient();
@@ -11,7 +12,10 @@ export const useCreateFarmerOwnedPaddyWarehouse = () => {
 
   return useMutation({
     mutationFn: (values: FarmerOwnedPaddyWarehouseFormValues) =>
-      apiClient.post("/farmer_owned_paddy", values),
+      apiClient.post(
+        "/farmer_owned_paddy",
+        buildFarmerOwnedPaddyWarehousePayload(values),
+      ),
     onSuccess: () => {
       toast.success(
         t("common:create_success", {

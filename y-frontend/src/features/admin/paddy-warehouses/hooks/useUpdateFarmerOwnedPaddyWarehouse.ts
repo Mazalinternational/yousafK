@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { getErrorMessage } from "@/utils/getErrorMessage";
 import { useTranslation } from "react-i18next";
 import type { FarmerOwnedPaddyWarehouseFormValues } from "../schemas/farmer-owned-paddy-warehouse";
+import { buildFarmerOwnedPaddyWarehousePayload } from "../utils/buildFarmerOwnedPaddyWarehousePayload";
 
 export const useUpdateFarmerOwnedPaddyWarehouse = () => {
   const queryClient = useQueryClient();
@@ -16,7 +17,11 @@ export const useUpdateFarmerOwnedPaddyWarehouse = () => {
     }: {
       id: string;
       values: FarmerOwnedPaddyWarehouseFormValues;
-    }) => apiClient.patch(`/farmer_owned_paddy/${id}`, values),
+    }) =>
+      apiClient.patch(
+        `/farmer_owned_paddy/${id}`,
+        buildFarmerOwnedPaddyWarehousePayload(values),
+      ),
     onSuccess: () => {
       toast.success(
         t("common:update_success", {
