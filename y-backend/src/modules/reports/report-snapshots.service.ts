@@ -293,18 +293,19 @@ export class ReportSnapshotsService {
       const varieties: Array<{ variety: string; currentStockKg: string }> = [];
       let currentStockKg = new Prisma.Decimal(0);
 
+      // Book remaining (same idea as rice warehouse dashboard) — include zeros/negatives
+      // so the report stock balance is visible even after overselling.
       for (const variety of [...varietyNames].sort()) {
         const kg = await this.riceSaleService.getAvailableRiceVarietyKg({
           seasonId,
           riceVariety: variety,
+          floorAtZero: false,
         });
-        if (kg.greaterThan(0)) {
-          varieties.push({
-            variety,
-            currentStockKg: kg.toFixed(2),
-          });
-          currentStockKg = currentStockKg.plus(kg);
-        }
+        varieties.push({
+          variety,
+          currentStockKg: kg.toFixed(2),
+        });
+        currentStockKg = currentStockKg.plus(kg);
       }
 
       result.rice_warehouse = {

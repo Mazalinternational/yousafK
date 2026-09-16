@@ -27,18 +27,19 @@ type InputFieldPropsTyped<TFieldValues extends FieldValues = FieldValues> = {
 const inferCharacterRestriction = (name: string): Exclude<CharacterRestriction, "auto"> => {
   const normalizedName = name.toLowerCase();
 
+  // Only explicit language suffixes — never bare "pa"/"en" endings (false positives).
   if (
     normalizedName.endsWith(".dr") ||
     normalizedName.endsWith(".pa") ||
     normalizedName.endsWith(".ps") ||
-    normalizedName.endsWith("dr") ||
-    normalizedName.endsWith("pa") ||
-    normalizedName.endsWith("ps")
+    normalizedName.endsWith("namedr") ||
+    normalizedName.endsWith("namepa") ||
+    normalizedName.endsWith("nameps")
   ) {
     return "arabic";
   }
 
-  if (normalizedName.endsWith(".en") || normalizedName.endsWith("en")) {
+  if (normalizedName.endsWith(".en") || normalizedName.endsWith("nameen")) {
     return "latin";
   }
 

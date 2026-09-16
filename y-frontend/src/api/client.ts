@@ -67,6 +67,16 @@ export function getCachedCsrfToken(): string | null {
   return getCsrfToken();
 }
 
+/**
+ * Host ModSecurity often false-positives on Pashto/Dari (Arabic-script) JSON
+ * bodies. ASCII `\uXXXX` escapes keep the same payload while avoiding the WAF.
+ */
+function jsonWithAsciiEscapes(value: unknown): string {
+  return JSON.stringify(value).replace(/[\u007F-\uFFFF]/g, (ch) => {
+    return `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`;
+  });
+}
+
 export const apiClient = axios.create({
   baseURL,
   withCredentials: true,
@@ -76,6 +86,32 @@ export const apiClient = axios.create({
     "Content-Type": "application/json;charset=UTF-8",
     Accept: "application/json",
   },
+  transformRequest: [
+    (data, headers) => {
+      if (data === undefined || data === null) {
+        return data;
+      }
+      if (typeof data === "string") {
+        return data;
+      }
+      if (typeof FormData !== "undefined" && data instanceof FormData) {
+        return data;
+      }
+      if (typeof Blob !== "undefined" && data instanceof Blob) {
+        return data;
+      }
+      if (typeof URLSearchParams !== "undefined" && data instanceof URLSearchParams) {
+        return data;
+      }
+      if (headers && typeof (headers as AxiosHeaders).set === "function") {
+        (headers as AxiosHeaders).set(
+          "Content-Type",
+          "application/json;charset=UTF-8",
+        );
+      }
+      return jsonWithAsciiEscapes(data);
+    },
+  ],
 });
 
 apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {

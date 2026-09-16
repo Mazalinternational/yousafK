@@ -560,9 +560,14 @@ export function buildFullReportOutput(
       });
     }
     if (st.rice_warehouse) {
+      const varietyHint = st.rice_warehouse.varieties?.length
+        ? ` (${st.rice_warehouse.varieties
+            .map((v) => `${v.variety}: ${fmtKg(v.currentStockKg, t, locale)}`)
+            .join(" · ")})`
+        : "";
       stockLines.push({
         label: t("sidebar:rice_warehouse:rice"),
-        value: fmtKg(st.rice_warehouse.currentStockKg, t, locale),
+        value: `${fmtKg(st.rice_warehouse.currentStockKg, t, locale)}${varietyHint}`,
       });
     }
     if (st.store) {

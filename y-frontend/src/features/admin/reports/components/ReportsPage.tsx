@@ -558,6 +558,72 @@ export function ReportsPage() {
             </motion.div>
           ) : null}
 
+          {data.stock && tablesById.stock_overview ? (
+            <motion.div variants={sectionVariants}>
+              <ReportSectionCard
+                borderClass="border-s-4 border-s-violet-500"
+                iconWrapClass="bg-violet-500/10 text-violet-800 dark:text-violet-300"
+                icon={<Package2 className="h-5 w-5" strokeWidth={1.75} />}
+                title={t("common:report_stock_overview_title")}
+                description={t("common:report_stock_overview_hint")}
+              >
+                <ReportDataTable
+                  colSpan={2}
+                  empty={!tablesById.stock_overview.rows.length}
+                  emptyLabel={t("common:no_data")}
+                  head={
+                    <>
+                      <th className="px-3 py-3 font-semibold text-foreground/80">{t("common:type")}</th>
+                      <th className="px-3 py-3 text-end font-semibold text-foreground/80">
+                        {t("common:current_stock_balance")}
+                      </th>
+                    </>
+                  }
+                  rows={tablesById.stock_overview.rows.map((row, idx) => (
+                    <tr key={idx} className="transition-colors hover:bg-muted/40">
+                      <td className="px-3 py-2.5 font-medium">{String(row.module ?? "—")}</td>
+                      <td className="px-3 py-2.5 text-end tabular-nums">{String(row.value ?? "—")}</td>
+                    </tr>
+                  ))}
+                />
+
+                {data.stock.rice_warehouse?.varieties?.length ? (
+                  <div className="mt-4 space-y-2">
+                    <p className="text-sm font-medium text-foreground/80">
+                      {t("sidebar:rice_warehouse:rice")} — {t("common:current_stock_balance")}
+                    </p>
+                    <ReportDataTable
+                      colSpan={2}
+                      empty={false}
+                      emptyLabel={t("common:no_data")}
+                      head={
+                        <>
+                          <th className="px-3 py-3 font-semibold text-foreground/80">{t("common:variety")}</th>
+                          <th className="px-3 py-3 text-end font-semibold text-foreground/80">
+                            {t("common:current_stock_balance")}
+                          </th>
+                        </>
+                      }
+                      rows={data.stock.rice_warehouse.varieties.map((row) => (
+                        <tr key={row.variety} className="transition-colors hover:bg-muted/40">
+                          <td className="px-3 py-2.5 font-medium">{row.variety}</td>
+                          <td className="px-3 py-2.5 text-end tabular-nums">
+                            {formatReportWeightMetric(
+                              "totalProcessedWeightKg",
+                              row.currentStockKg,
+                              t,
+                              locale,
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    />
+                  </div>
+                ) : null}
+              </ReportSectionCard>
+            </motion.div>
+          ) : null}
+
           <motion.div variants={sectionVariants} className="grid gap-5 md:grid-cols-2">
             {s.entering_paddy ? (
               <ReportSectionCard
@@ -651,7 +717,7 @@ export function ReportsPage() {
               </ReportSectionCard>
             ) : null}
 
-            {s.rice_warehouse ? (
+            {s.rice_warehouse || data.stock?.rice_warehouse ? (
               <ReportSectionCard
                 borderClass="border-s-4 border-s-sky-500"
                 iconWrapClass="bg-sky-500/10 text-sky-800 dark:text-sky-400"
@@ -659,14 +725,74 @@ export function ReportsPage() {
                 title={t("sidebar:rice_warehouse:rice")}
                 description={t("common:report_in_period")}
               >
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <MetricTile label={t("common:entries")} value={formatDisplayNumber(s.rice_warehouse.recordCount, locale)} />
-                  <MetricTile label={t("common:quantity")} value={formatReportWeightMetric("totalQuantity", s.rice_warehouse.totalQuantity, t, locale)} />
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <MetricTile
+                    label={t("common:entries")}
+                    value={formatDisplayNumber(s.rice_warehouse?.recordCount ?? 0, locale)}
+                  />
+                  <MetricTile
+                    label={t("common:quantity")}
+                    value={formatReportWeightMetric(
+                      "totalQuantity",
+                      s.rice_warehouse?.totalQuantity,
+                      t,
+                      locale,
+                    )}
+                  />
                   <MetricTile
                     label={t("common:amount")}
-                    value={formatNumber(s.rice_warehouse.totalAmount, locale, { minimumFractionDigits: 2 })}
+                    value={formatNumber(s.rice_warehouse?.totalAmount, locale, {
+                      minimumFractionDigits: 2,
+                    })}
+                  />
+                  <MetricTile
+                    label={t("common:current_stock_balance")}
+                    value={formatReportWeightMetric(
+                      "totalProcessedWeightKg",
+                      s.rice_warehouse?.stock?.currentStockKg ??
+                        data.stock?.rice_warehouse?.currentStockKg,
+                      t,
+                      locale,
+                    )}
                   />
                 </div>
+                {(s.rice_warehouse?.stock?.varieties ?? data.stock?.rice_warehouse?.varieties)?.length ? (
+                  <div className="mt-4 space-y-2">
+                    <p className="text-sm font-medium text-foreground/80">
+                      {t("common:current_stock_balance")}
+                    </p>
+                    <ReportDataTable
+                      colSpan={2}
+                      empty={false}
+                      emptyLabel={t("common:no_data")}
+                      head={
+                        <>
+                          <th className="px-3 py-3 font-semibold text-foreground/80">{t("common:variety")}</th>
+                          <th className="px-3 py-3 text-end font-semibold text-foreground/80">
+                            {t("common:current_stock_balance")}
+                          </th>
+                        </>
+                      }
+                      rows={(
+                        s.rice_warehouse?.stock?.varieties ??
+                        data.stock?.rice_warehouse?.varieties ??
+                        []
+                      ).map((row) => (
+                        <tr key={row.variety} className="transition-colors hover:bg-muted/40">
+                          <td className="px-3 py-2.5 font-medium">{row.variety}</td>
+                          <td className="px-3 py-2.5 text-end tabular-nums">
+                            {formatReportWeightMetric(
+                              "totalProcessedWeightKg",
+                              row.currentStockKg,
+                              t,
+                              locale,
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    />
+                  </div>
+                ) : null}
                 <ReportDetailEntriesTable t={t} tableId="rice_warehouse" tablesById={tablesById} />
               </ReportSectionCard>
             ) : null}

@@ -127,18 +127,26 @@ export function RiceSaleForm({
     const rows = [...(dashboard?.varietyBreakdown ?? [])];
     if (
       initialSale?.riceVariety &&
-      !rows.some((row) => row.variety === initialSale.riceVariety)
+      !rows.some(
+        (row) =>
+          row.variety.trim().toLowerCase() ===
+          initialSale.riceVariety.trim().toLowerCase(),
+      )
     ) {
       rows.push({
         variety: initialSale.riceVariety,
         currentStockKg: "0",
+        sellableStockKg: "0",
       } as (typeof rows)[number]);
     }
 
-    return rows.map((v) => ({
-      value: v.variety,
-      label: `${v.variety} (${formatAvailableStockFromKg(v.sellableStockKg ?? v.currentStockKg, t)})`,
-    }));
+    return rows.map((v) => {
+      const availableKg = v.sellableStockKg ?? v.currentStockKg;
+      return {
+        value: v.variety,
+        label: `${v.variety} (${formatAvailableStockFromKg(availableKg, t)})`,
+      };
+    });
   }, [dashboard?.varietyBreakdown, initialSale?.riceVariety, t]);
 
   const paymentTypeOptions = RICE_PAYMENT_TYPE_OPTIONS.map((paymentType) => ({
@@ -201,12 +209,19 @@ export function RiceSaleForm({
   const riceBagsAmountStr = useWatch({ control: form.control, name: "riceBagsAmount" });
 
   const selectedAvailableKg = useMemo(() => {
-    const row = dashboard?.varietyBreakdown?.find((item) => item.variety === riceVariety);
-    let availableKg = Number(row?.sellableStockKg ?? Math.max(Number(row?.currentStockKg ?? 0), 0));
+    const selected = String(riceVariety ?? "").trim().toLowerCase();
+    const row = dashboard?.varietyBreakdown?.find(
+      (item) => item.variety.trim().toLowerCase() === selected,
+    );
+    const raw =
+      row?.sellableStockKg != null && row.sellableStockKg !== ""
+        ? Number(row.sellableStockKg)
+        : Math.max(Number(row?.currentStockKg ?? 0), 0);
+    let availableKg = Number.isFinite(raw) ? raw : 0;
 
     if (
       initialSale &&
-      initialSale.riceVariety === riceVariety &&
+      initialSale.riceVariety.trim().toLowerCase() === selected &&
       Number.isFinite(Number(initialSale.fromStockWeightKg))
     ) {
       availableKg += Number(initialSale.fromStockWeightKg);
@@ -325,6 +340,20 @@ export function RiceSaleForm({
                 disabled={!dashboard?.season}
               />
             </div>
+
+            {riceVariety ? (
+              <div className="md:col-span-2 rounded-lg border border-border/70 bg-muted/30 px-4 py-3">
+                <p className="text-sm font-medium text-foreground">
+                  {t("common:available_rice_stock")}
+                </p>
+                <p className="mt-1 text-lg font-semibold tabular-nums">
+                  {formatAvailableStockFromKg(selectedAvailableKg, t)}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t("common:available_rice_stock_hint")}
+                </p>
+              </div>
+            ) : null}
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

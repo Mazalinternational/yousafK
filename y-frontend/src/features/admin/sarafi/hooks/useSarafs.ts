@@ -24,19 +24,17 @@ export const useSarafs = (filters: {
   return useQuery<PaginatedResponse<Saraf>>({
     queryKey: ["sarafi", selectedSeasonId, filters],
     queryFn: async () => {
-      // Host WAF (ModSecurity) often false-positives on `sortBy=name` as SQLi.
-      // Sort by createdAt on the server, then by name in the browser.
-      const wantsNameSort = filters.sortBy === "name";
+      // Host WAF (ModSecurity) often false-positives on sortBy / sortByAction.
+      // Omit sort params and sort by name in the browser when requested.
+      const wantsNameSort = !filters.sortBy || filters.sortBy === "name";
       const sortDirection =
-        filters.sortByAction || filters.sortDirection || undefined;
+        filters.sortByAction || filters.sortDirection || "asc";
 
       const response = await apiClient.get("sarafi", {
         params: {
           pageNumber: filters.pageNumber || 1,
           pageSize: filters.pageSize || 10,
           query: filters.query || undefined,
-          sortBy: wantsNameSort ? "createdAt" : filters.sortBy || undefined,
-          sortByAction: sortDirection,
           seasonId: filters.seasonId || undefined,
         },
       });

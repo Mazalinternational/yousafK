@@ -458,6 +458,8 @@ export class RiceSaleService {
     riceVariety: string;
     excludeRiceSaleId?: string;
     excludeRiceCharityId?: string;
+    /** When false, returns book remaining (can be negative). Default true for sellable stock. */
+    floorAtZero?: boolean;
   }) {
     const variety = params.riceVariety;
 
@@ -564,14 +566,17 @@ export class RiceSaleService {
       new Prisma.Decimal(0),
     );
 
-    return Prisma.Decimal.max(
-      warehouseInKg
-        .plus(processInKg)
-        .minus(totalSalesOutKg)
-        .minus(totalCharityOutKg)
-        .minus(farmerReturnOutKg),
-      0,
-    );
+    const remaining = warehouseInKg
+      .plus(processInKg)
+      .minus(totalSalesOutKg)
+      .minus(totalCharityOutKg)
+      .minus(farmerReturnOutKg);
+
+    if (params.floorAtZero === false) {
+      return remaining;
+    }
+
+    return Prisma.Decimal.max(remaining, 0);
   }
 
   private async sumFulfilledFarmerRiceReturnOutKg(params: {
