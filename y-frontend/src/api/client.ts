@@ -68,11 +68,50 @@ export function getCachedCsrfToken(): string | null {
 }
 
 /**
- * Host ModSecurity often false-positives on Pashto/Dari (Arabic-script) JSON
- * bodies. ASCII `\uXXXX` escapes keep the same payload while avoiding the WAF.
+ * Host ModSecurity false-positives on Pashto/Dari (Arabic-script) in JSON bodies,
+ * including after `\uXXXX` decoding. Encode those strings as ASCII-only `yk1:` +
+ * base64 so the raw request never contains Arabic script. The API middleware
+ * decodes the prefix before handlers run.
  */
+const WAF_SAFE_PREFIX = "yk1:";
+const ARABIC_SCRIPT_RE =
+  /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+
+function containsArabicScript(value: string): boolean {
+  return ARABIC_SCRIPT_RE.test(value);
+}
+
+function utf8ToBase64(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
+}
+
+function encodeWafSafeValue(value: unknown): unknown {
+  if (typeof value === "string") {
+    if (!containsArabicScript(value)) {
+      return value;
+    }
+    return `${WAF_SAFE_PREFIX}${utf8ToBase64(value)}`;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => encodeWafSafeValue(item));
+  }
+  if (value && typeof value === "object") {
+    const encoded: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      encoded[key] = encodeWafSafeValue(nested);
+    }
+    return encoded;
+  }
+  return value;
+}
+
 function jsonWithAsciiEscapes(value: unknown): string {
-  return JSON.stringify(value).replace(/[\u007F-\uFFFF]/g, (ch) => {
+  return JSON.stringify(encodeWafSafeValue(value)).replace(/[\u007F-\uFFFF]/g, (ch) => {
     return `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`;
   });
 }

@@ -13,6 +13,7 @@ import { AppModule } from './app.module.js';
 import { authConfig } from './common/auth/auth.config.js';
 import { resolveCookieConfig } from './common/auth/cookie.util.js';
 import { isOriginAllowed, parseAllowedOrigins } from './common/cors.util.js';
+import { decodeWafSafeValue } from './common/waf-safe-body.util.js';
 import { PrismaService } from './infrastructure/prisma/prisma.service.js';
 import { runDatabaseMigrationsOnBoot } from './infrastructure/prisma/run-migrations.js';
 
@@ -48,6 +49,15 @@ async function bootstrap() {
 
   // Required for httpOnly cookies (auth) and the CSRF cookie.
   app.use(cookieParser());
+
+  // Decode frontend WAF-safe Pashto/Dari wrappers before controllers run.
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    if (req.body && typeof req.body === 'object') {
+      req.body = decodeWafSafeValue(req.body);
+    }
+    next();
+  });
+
   const prisma = app.get(PrismaService);
 
   const GLOBAL_ROUTE_PREFIXES = [
