@@ -719,11 +719,13 @@ export class RiceWarehouseService {
     const varietyBreakdown = Array.from(varietyMap.entries())
       .map(([variety, totals]) => {
         const totalInKg = totals.warehouseInKg.plus(totals.processInKg);
+        // Book remaining (same figure as the dashboard tile) — billed sales,
+        // charity, and fulfilled farmer returns. Can be negative after oversell.
         const currentStockKg = totalInKg.minus(totals.totalOutKg);
-        const sellableStockKg = Prisma.Decimal.max(
-          totalInKg.minus(totals.physicalOutKg),
-          0,
-        );
+        // Physical remaining for new sales: never above book, never below zero.
+        // Do not use sum(fromStockWeightKg) here — legacy rows default that
+        // column to 0 and would leave sellable stuck at total-in.
+        const sellableStockKg = Prisma.Decimal.max(currentStockKg, 0);
         const farmerRice = farmerRiceByVariety.get(variety);
 
         return {

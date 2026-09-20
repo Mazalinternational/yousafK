@@ -12,6 +12,7 @@ import {
   formatWeightFromKg,
   kgToSeer,
   SEER_KG,
+  stockValueClassName,
 } from "@/utils/weightUnit";
 import { useCurrencies } from "../../currencies/hooks/useCurrencies";
 import { useCustomers } from "../../customer/hooks/useCustomers";
@@ -140,13 +141,11 @@ export function RiceSaleForm({
       } as (typeof rows)[number]);
     }
 
-    return rows.map((v) => {
-      const availableKg = v.sellableStockKg ?? v.currentStockKg;
-      return {
-        value: v.variety,
-        label: `${v.variety} (${formatAvailableStockFromKg(availableKg, t)})`,
-      };
-    });
+    return rows.map((v) => ({
+      value: v.variety,
+      // Match rice warehouse dashboard: book balance (can be negative).
+      label: `${v.variety} (${formatAvailableStockFromKg(v.currentStockKg, t)})`,
+    }));
   }, [dashboard?.varietyBreakdown, initialSale?.riceVariety, t]);
 
   const paymentTypeOptions = RICE_PAYMENT_TYPE_OPTIONS.map((paymentType) => ({
@@ -208,27 +207,30 @@ export function RiceSaleForm({
   const loadingAmountStr = useWatch({ control: form.control, name: "loadingAmount" });
   const riceBagsAmountStr = useWatch({ control: form.control, name: "riceBagsAmount" });
 
-  const selectedAvailableKg = useMemo(() => {
+  const selectedBookStockKg = useMemo(() => {
     const selected = String(riceVariety ?? "").trim().toLowerCase();
     const row = dashboard?.varietyBreakdown?.find(
       (item) => item.variety.trim().toLowerCase() === selected,
     );
-    const raw =
-      row?.sellableStockKg != null && row.sellableStockKg !== ""
-        ? Number(row.sellableStockKg)
-        : Math.max(Number(row?.currentStockKg ?? 0), 0);
-    let availableKg = Number.isFinite(raw) ? raw : 0;
+    const bookKg = Number(row?.currentStockKg ?? 0);
+    return Number.isFinite(bookKg) ? bookKg : 0;
+  }, [dashboard?.varietyBreakdown, riceVariety]);
+
+  /** Physical qty still available to take from stock (never negative). */
+  const selectedAvailableKg = useMemo(() => {
+    let availableKg = Math.max(selectedBookStockKg, 0);
 
     if (
       initialSale &&
-      initialSale.riceVariety.trim().toLowerCase() === selected &&
+      initialSale.riceVariety.trim().toLowerCase() ===
+        String(riceVariety ?? "").trim().toLowerCase() &&
       Number.isFinite(Number(initialSale.fromStockWeightKg))
     ) {
       availableKg += Number(initialSale.fromStockWeightKg);
     }
 
     return Number.isFinite(availableKg) ? Math.max(availableKg, 0) : 0;
-  }, [dashboard?.varietyBreakdown, initialSale, riceVariety]);
+  }, [initialSale, riceVariety, selectedBookStockKg]);
 
   const oversoldSeer = useMemo(() => {
     const requested = Number(quantityStr);
@@ -344,10 +346,14 @@ export function RiceSaleForm({
             {riceVariety ? (
               <div className="md:col-span-2 rounded-lg border border-border/70 bg-muted/30 px-4 py-3">
                 <p className="text-sm font-medium text-foreground">
-                  {t("common:available_rice_stock")}
+                  {t("common:current_stock_balance")}
                 </p>
-                <p className="mt-1 text-lg font-semibold tabular-nums">
-                  {formatAvailableStockFromKg(selectedAvailableKg, t)}
+                <p
+                  className={`mt-1 text-lg font-semibold tabular-nums ${
+                    stockValueClassName(selectedBookStockKg) ?? ""
+                  }`}
+                >
+                  {formatAvailableStockFromKg(selectedBookStockKg, t)}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {t("common:available_rice_stock_hint")}

@@ -4,12 +4,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import {
-  normalizeWeightUnit,
-  toKilograms,
-} from '../../common/weight/weight-unit.util.js';
+import { normalizeWeightUnit } from '../../common/weight/weight-unit.util.js';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
-import { RiceSaleService } from '../rice-sale/rice-sale.service.js';
 import { SeasonService } from '../season/season.service.js';
 import { VarietyService } from '../variety/variety.service.js';
 import { CreateRiceCharityDto } from './dto/create-rice-charity.dto.js';
@@ -44,7 +40,6 @@ export class RiceCharityService {
     private readonly prisma: PrismaService,
     private readonly seasonService: SeasonService,
     private readonly varietyService: VarietyService,
-    private readonly riceSaleService: RiceSaleService,
   ) {}
 
   private get riceCharityModel() {
@@ -57,7 +52,6 @@ export class RiceCharityService {
 
     const prepared = await this.prepareCharityWrite({
       dto: createDto,
-      seasonId: activeSeason.id,
     });
 
     const billNo = await this.generateBillNo(
@@ -114,8 +108,6 @@ export class RiceCharityService {
 
     const prepared = await this.prepareCharityWrite({
       dto: updateDto,
-      seasonId: current.seasonId,
-      excludeRiceCharityId: id,
     });
 
     const updated = await this.riceCharityModel.update({
@@ -221,8 +213,6 @@ export class RiceCharityService {
 
   private async prepareCharityWrite(params: {
     dto: CreateRiceCharityDto | UpdateRiceCharityDto;
-    seasonId: string;
-    excludeRiceCharityId?: string;
   }) {
     const recipientName = params.dto.recipientName?.trim();
 
@@ -237,18 +227,8 @@ export class RiceCharityService {
     const quantity = this.parsePositiveDecimal(params.dto.quantity, 'quantity');
     const charityDate = this.parseDate(params.dto.charityDate, 'charityDate');
 
-    const availableKg = await this.riceSaleService.getAvailableRiceVarietyKg({
-      seasonId: params.seasonId,
-      riceVariety,
-      excludeRiceCharityId: params.excludeRiceCharityId,
-    });
-    const requestedKg = toKilograms(quantity, unit);
-
-    if (requestedKg.greaterThan(availableKg)) {
-      throw new BadRequestException(
-        `Not enough ${riceVariety} rice in stock for this season`,
-      );
-    }
+    // Charity reduces book stock the same way as sales. Do not block when
+    // physical/book remaining is already zero or negative (oversell seasons).
 
     return {
       recipientName,

@@ -4,7 +4,7 @@
  */
 const WAF_SAFE_PREFIX = 'yk1:';
 
-function decodeWafSafeString(value: string): string {
+export function decodeWafSafeString(value: string): string {
   if (!value.startsWith(WAF_SAFE_PREFIX)) {
     return value;
   }

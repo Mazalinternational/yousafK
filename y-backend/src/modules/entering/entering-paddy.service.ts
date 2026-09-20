@@ -16,6 +16,7 @@ import {
   normalizeWeightUnit,
   toKilograms,
 } from '../../common/weight/weight-unit.util.js';
+import { decodeWafSafeString } from '../../common/waf-safe-body.util.js';
 
 const enteringPaddySelect = {
   id: true,
@@ -522,7 +523,7 @@ export class EnteringPaddyService {
   }
 
   private requireText(value: string, fieldName: string) {
-    const normalizedValue = value?.trim();
+    const normalizedValue = decodeWafSafeString(value ?? '').trim();
 
     if (!normalizedValue) {
       throw new BadRequestException(`${fieldName} is required`);

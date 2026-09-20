@@ -48,14 +48,29 @@ export function RiceCharityForm({
   const riceCharityFormSchema = useMemo(() => createRiceCharityFormSchema(t), [t]);
 
   const varietyOptions = useMemo(() => {
-    const rows = dashboard?.varietyBreakdown ?? [];
-    return rows
-      .filter((v) => Number(v.currentStockKg) > 0)
-      .map((v) => ({
-        value: v.variety,
-        label: `${v.variety} (${formatAvailableStockFromKg(v.currentStockKg, t)})`,
-      }));
-  }, [dashboard?.varietyBreakdown, t]);
+    const rows = [...(dashboard?.varietyBreakdown ?? [])];
+
+    if (
+      initialCharity?.riceVariety &&
+      !rows.some(
+        (row) =>
+          row.variety.trim().toLowerCase() ===
+          initialCharity.riceVariety.trim().toLowerCase(),
+      )
+    ) {
+      rows.push({
+        variety: initialCharity.riceVariety,
+        currentStockKg: "0",
+      } as (typeof rows)[number]);
+    }
+
+    // Show every variety from the rice warehouse dashboard (including 0 / negative
+    // book stock). Filtering to currentStockKg > 0 left the dropdown empty after oversell.
+    return rows.map((v) => ({
+      value: v.variety,
+      label: `${v.variety} (${formatAvailableStockFromKg(v.currentStockKg, t)})`,
+    }));
+  }, [dashboard?.varietyBreakdown, initialCharity?.riceVariety, t]);
 
   const form = useForm<RiceCharityFormValues>({
     resolver: zodResolver(riceCharityFormSchema) as Resolver<RiceCharityFormValues>,

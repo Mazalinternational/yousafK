@@ -9,6 +9,7 @@ import { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
 import { CreateVarietyDto } from './dto/create-variety.dto.js';
 import { FindVarietiesQueryDto } from './dto/find-varieties-query.dto.js';
 import { UpdateVarietyDto } from './dto/update-variety.dto.js';
+import { decodeWafSafeString } from '../../common/waf-safe-body.util.js';
 
 const KIND_VALUES = new Set<string>(['RICE', 'PADDY', 'PROCESS_PRODUCTION']);
 
@@ -35,7 +36,7 @@ export class VarietyService {
     kind: VarietyKind,
     raw: string,
   ): Promise<string> {
-    const trimmed = raw?.trim();
+    const trimmed = decodeWafSafeString(raw ?? '').trim();
     if (!trimmed) {
       throw new BadRequestException('variety is required');
     }
