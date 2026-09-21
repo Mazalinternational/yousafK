@@ -54,7 +54,6 @@ const FloatingLabelInput = React.forwardRef<
           id={generatedId}
           type={type}
           value={value}
-          dir={isRTL ? "rtl" : "ltr"}
           placeholder={isFocused ? placeholder : " "}
           onFocus={(event) => {
             setIsFocused(true);
@@ -66,9 +65,18 @@ const FloatingLabelInput = React.forwardRef<
           }}
           className={cn(
             "transition-all hover:border-[#FEA317] h-10 dark:bg-[#18181B]",
-            isRTL ? "text-right pr-3" : "text-left pl-3",
+            type === "number"
+              ? "text-left pl-3"
+              : isRTL
+                ? "text-right pr-3"
+                : "text-left pl-3",
           )}
           {...props}
+          // Force after {...props} so RTL callers cannot block "." decimals.
+          lang={type === "number" ? "en" : props.lang}
+          inputMode={type === "number" ? "decimal" : props.inputMode}
+          step={type === "number" ? (props.step ?? "any") : props.step}
+          dir={type === "number" ? "ltr" : isRTL ? "rtl" : "ltr"}
         />
         <Label
           htmlFor={generatedId}

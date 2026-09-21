@@ -55,6 +55,10 @@ export default function FloatingNumberField({
               <input
                 id={name}
                 type="number"
+                lang="en"
+                inputMode="decimal"
+                step="any"
+                dir="ltr"
                 {...field}
                 onFocus={() => setFocused(true)}
                 onBlur={() => setFocused(false)}
@@ -63,7 +67,8 @@ export default function FloatingNumberField({
                   "focus-visible:ring-2 focus-visible:ring-ring/30",
                   // Remove number arrows
                   "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
-                  isRTL ? "text-right" : "text-left"
+                  // Always LTR for decimals ("." must remain usable in Dari/Pashto).
+                  "text-left",
                 )}
               />
             </FormControl>

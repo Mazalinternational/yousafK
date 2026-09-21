@@ -19,11 +19,12 @@ import type { ReportSummary } from "../schemas/reports";
 
 function fmt(
   value: string | number | null | undefined,
-  locale: string,
+  _locale: string,
   options?: Intl.NumberFormatOptions,
 ) {
   if (value === null || value === undefined || value === "") return "—";
-  return new Intl.NumberFormat(locale, {
+  // Always Western "." decimals — fa-AF/ps-AF Arabic decimal ٫ looks missing.
+  return new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 2,
     minimumFractionDigits: 0,
     ...options,

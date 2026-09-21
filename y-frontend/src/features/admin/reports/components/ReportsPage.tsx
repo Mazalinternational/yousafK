@@ -63,14 +63,19 @@ function formatUtcYmd(d: Date): string {
 
 function formatNumber(
   value: string | number | null | undefined,
-  locale: string,
+  _locale: string,
   options?: Intl.NumberFormatOptions,
 ) {
   if (value === null || value === undefined || value === "") return "—";
   if (options?.minimumFractionDigits === 2 || options?.maximumFractionDigits === 2) {
-    return formatDisplayAmount(value, locale);
+    // Use Latin digits + "." so decimal points stay visible in Dari/Pashto.
+    return formatDisplayAmount(value, "en-US");
   }
-  return formatDisplayNumber(value, locale);
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+    ...options,
+  }).format(Number(value));
 }
 
 function formatReportWeightMetric(

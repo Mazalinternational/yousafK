@@ -21,13 +21,16 @@ export function seerToKg(seer: string | number): number {
   return Number(seer) * SEER_KG;
 }
 
+/** Always Western digits + "." so decimals stay visible in Dari/Pashto UI. */
+const WEIGHT_NUMBER_LOCALE = "en-US";
+
 export function formatSeerNumber(
   kilograms: string | number,
   options?: Intl.NumberFormatOptions,
 ): string {
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat(WEIGHT_NUMBER_LOCALE, {
     maximumFractionDigits: 2,
-    minimumFractionDigits: 0,
+    minimumFractionDigits: 2,
     ...options,
   }).format(kgToSeer(kilograms));
 }
@@ -40,10 +43,11 @@ export function formatWeightFromKg(
 ): string {
   if (options) {
     const seer = kgToSeer(kilograms);
-    const formatted = new Intl.NumberFormat("en-US", {
-      maximumFractionDigits: 2,
-      minimumFractionDigits: 0,
+    const formatted = new Intl.NumberFormat(WEIGHT_NUMBER_LOCALE, {
       ...options,
+      maximumFractionDigits: 2,
+      minimumFractionDigits: 2,
+      numberingSystem: "latn",
     }).format(seer);
     return `${formatted} ${t("common:seer_unit_short")}`;
   }
@@ -60,23 +64,24 @@ export function formatAvailableStockFromKg(
   options?: { maxFractionDigits?: number; locale?: string },
 ): string {
   const maxFd = options?.maxFractionDigits ?? 2;
-  const locale = options?.locale ?? "en-US";
+  // Ignore RTL locales — always Western "." decimals for stock.
+  void options?.locale;
   const kg = Number(kilograms);
   if (Number.isNaN(kg)) {
-    return `0 ${t("common:seer_unit_short")}`;
+    return `0.00 ${t("common:seer_unit_short")}`;
   }
   if (kg < 0) {
-    return formatKilogramsAsSeer(kg, t, locale);
+    return formatKilogramsAsSeer(kg, t);
   }
   if (kg === 0) {
-    return `0 ${t("common:seer_unit_short")}`;
+    return `0.00 ${t("common:seer_unit_short")}`;
   }
   const seer = kg / SEER_KG;
   const factor = 10 ** maxFd;
   const floored = Math.floor(seer * factor + 1e-9) / factor;
-  const formatted = new Intl.NumberFormat(locale, {
+  const formatted = new Intl.NumberFormat(WEIGHT_NUMBER_LOCALE, {
     maximumFractionDigits: maxFd,
-    minimumFractionDigits: 0,
+    minimumFractionDigits: Math.min(2, maxFd),
   }).format(floored);
   return `${formatted} ${t("common:seer_unit_short")}`;
 }
@@ -120,21 +125,21 @@ export function isSeerReportFieldKey(key: string): boolean {
   );
 }
 
-/** Display a seer count exactly (whole numbers when the value is whole). */
+/** Display a seer count with exactly 2 decimal places (Western "."). */
 export function formatSeerQuantity(
   seer: string | number,
   t: TFunction,
-  locale = "en-US",
+  _locale = WEIGHT_NUMBER_LOCALE,
 ): string {
+  void _locale;
   const n = Number(seer);
   if (Number.isNaN(n)) {
     return "—";
   }
-  const rounded = Math.round(n * 1e6) / 1e6;
-  const isWhole = Math.abs(rounded - Math.round(rounded)) < 1e-9;
-  const formatted = new Intl.NumberFormat(locale, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: isWhole ? 0 : 2,
+  const rounded = Math.round(n * 100) / 100;
+  const formatted = new Intl.NumberFormat(WEIGHT_NUMBER_LOCALE, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(rounded);
   return `${formatted} ${t("common:seer_unit_short")}`;
 }
@@ -143,7 +148,7 @@ export function formatSeerQuantity(
 export function formatKilogramsAsSeer(
   kilograms: string | number,
   t: TFunction,
-  locale = "en-US",
+  locale = WEIGHT_NUMBER_LOCALE,
 ): string {
   return formatSeerQuantity(kgToSeer(kilograms), t, locale);
 }

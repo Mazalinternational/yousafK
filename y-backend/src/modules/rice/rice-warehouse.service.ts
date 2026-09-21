@@ -870,8 +870,8 @@ export class RiceWarehouseService {
         billNo: `FR-${entry.id}`,
       })),
     ]
-      .sort((left, right) => right.date.getTime() - left.date.getTime())
-      .slice(0, 10);
+      // Full season history — UI paginates; do not hard-limit to a few rows.
+      .sort((left, right) => right.date.getTime() - left.date.getTime());
 
     const combinedRemainingAmount = riceTotals.remainingAmount.plus(
       buyerSaleMoneyTotals.remaining,

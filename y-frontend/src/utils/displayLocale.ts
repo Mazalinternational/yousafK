@@ -106,7 +106,11 @@ export function formatDisplayAmount(
   if (value === null || value === undefined || value === "") {
     return "0.00";
   }
-  return new Intl.NumberFormat(locale, {
+  // Prefer Western digits + "." decimal so amounts stay readable in Dari/Pashto
+  // (fa-AF/ps-AF use Arabic decimal separator ٫ which often looks "missing").
+  const numberLocale =
+    locale === "fa-AF" || locale === "ps-AF" ? "en-US" : locale;
+  return new Intl.NumberFormat(numberLocale, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number(value));

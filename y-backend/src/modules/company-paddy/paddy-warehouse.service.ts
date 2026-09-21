@@ -714,8 +714,8 @@ export class PaddyWarehouseService {
         paymentType: null,
       })),
     ]
-      .sort((left, right) => right.date.getTime() - left.date.getTime())
-      .slice(0, 8);
+      // Full season history — UI paginates; do not hard-limit to a few rows.
+      .sort((left, right) => right.date.getTime() - left.date.getTime());
 
     const availableCompanyStockKg = Prisma.Decimal.max(
       companyTotals.totalQuantityKg.minus(companyProcessTotals),

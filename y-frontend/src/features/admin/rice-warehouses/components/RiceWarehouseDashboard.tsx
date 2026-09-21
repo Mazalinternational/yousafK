@@ -1,5 +1,7 @@
 import { motion } from "framer-motion";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { SimpleTablePagination } from "@/components/simple-table-pagination";
 import { StatusIndicator } from "@/components/status-indicator";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +13,7 @@ import { useRiceWarehouseDashboard } from "../hooks";
 function formatNumber(value: string | number, options?: Intl.NumberFormatOptions) {
   return new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 2,
-    minimumFractionDigits: 0,
+    minimumFractionDigits: 2,
     ...options,
   }).format(Number(value));
 }
@@ -26,8 +28,28 @@ function formatAmount(value: string | number) {
 export function RiceWarehouseDashboard() {
   const { t } = useTranslation();
   const { data, isLoading, error } = useRiceWarehouseDashboard();
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const fmtW = (kg: string | number) => formatWeightFromKg(kg, t);
   const bookStockKg = Number(data?.summary.totalInKg ?? 0) - Number(data?.summary.totalOutKg ?? 0);
+
+  const movements = data?.recentMovements ?? [];
+  const pageCount = Math.max(1, Math.ceil(movements.length / pageSize));
+
+  useEffect(() => {
+    setPageNumber(1);
+  }, [data?.season?.id, movements.length]);
+
+  useEffect(() => {
+    if (pageNumber > pageCount) {
+      setPageNumber(pageCount);
+    }
+  }, [pageNumber, pageCount]);
+
+  const pagedMovements = useMemo(() => {
+    const start = (pageNumber - 1) * pageSize;
+    return movements.slice(start, start + pageSize);
+  }, [movements, pageNumber, pageSize]);
 
   if (isLoading) {
     return (
@@ -304,14 +326,14 @@ export function RiceWarehouseDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.recentMovements.length === 0 ? (
+                    {pagedMovements.length === 0 ? (
                       <tr>
                         <td className="px-3 py-6 text-center text-muted-foreground" colSpan={9}>
                           {t("common:no_data")}
                         </td>
                       </tr>
                     ) : (
-                      data.recentMovements.map((movement) => (
+                      pagedMovements.map((movement) => (
                         <tr key={movement.id} className="border-b last:border-b-0">
                           <td className="px-3 py-3 text-start">{dateFormatter(movement.date)}</td>
                           <td className="px-3 py-3 text-start">
@@ -342,6 +364,15 @@ export function RiceWarehouseDashboard() {
                   </tbody>
                 </table>
               </div>
+              <SimpleTablePagination
+                pageNumber={pageNumber}
+                pageSize={pageSize}
+                totalCount={movements.length}
+                onChange={({ pageNumber: nextPage, pageSize: nextSize }) => {
+                  setPageNumber(nextPage);
+                  setPageSize(nextSize);
+                }}
+              />
             </CardContent>
           </Card>
         </motion.div>
