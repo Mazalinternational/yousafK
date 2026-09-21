@@ -1,10 +1,12 @@
 import { motion } from "framer-motion";
+import { Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SimpleTablePagination } from "@/components/simple-table-pagination";
 import { StatusIndicator } from "@/components/status-indicator";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { sectionVariants, staggerContainerVariants } from "@/lib/motion";
 import { dateFormatter } from "@/utils/dataFormatters";
 import { formatAvailableStockFromKg, formatWeightFromKg } from "@/utils/weightUnit";
@@ -30,9 +32,19 @@ export function PaddyWarehouseDashboard() {
   const { data, isLoading, error } = usePaddyWarehouseDashboard();
   const [pageNumber, setPageNumber] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const fmtW = (kg: string | number) => formatWeightFromKg(kg, t);
   const fmtStock = (kg: string | number) => formatAvailableStockFromKg(kg, t);
+
+  const typeLabel = (type: "company_purchase" | "farmer_exchange" | "process") =>
+    t(
+      type === "company_purchase"
+        ? "common:company_purchase"
+        : type === "process"
+          ? "common:paddy_process"
+          : "common:farmer_exchange",
+    );
 
   const companyPaymentLabel = (movement: {
     paymentType?: string | null;
@@ -53,12 +65,37 @@ export function PaddyWarehouseDashboard() {
     return bits.length > 0 ? bits.join(" · ") : "—";
   };
 
-  const movements = data?.recentMovements ?? [];
+  const movements = useMemo(() => {
+    const rows = data?.recentMovements ?? [];
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return rows;
+
+    return rows.filter((movement) => {
+      const haystack = [
+        typeLabel(movement.type),
+        movement.type,
+        movement.ownerName,
+        movement.paddyVariety,
+        movement.riceVariety,
+        movement.totalAmount,
+        movement.paymentType,
+        movement.paymentChannel,
+        movement.sarafName,
+        companyPaymentLabel(movement),
+        dateFormatter(movement.date),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [data?.recentMovements, searchQuery, t]);
+
   const pageCount = Math.max(1, Math.ceil(movements.length / pageSize));
 
   useEffect(() => {
     setPageNumber(1);
-  }, [data?.season?.id, movements.length]);
+  }, [data?.season?.id, searchQuery]);
 
   useEffect(() => {
     if (pageNumber > pageCount) {
@@ -304,7 +341,20 @@ export function PaddyWarehouseDashboard() {
               <CardTitle>{t("common:recent_movements")}</CardTitle>
               <CardDescription>{t("common:recent_movements_description")}</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              <div className="relative max-w-md">
+                <Search
+                  className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden
+                />
+                <Input
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder={t("common:recent_movements_search_placeholder")}
+                  className="ps-9"
+                  aria-label={t("common:search")}
+                />
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[760px] text-start text-sm">
                   <thead>
@@ -329,15 +379,7 @@ export function PaddyWarehouseDashboard() {
                       pagedMovements.map((movement) => (
                         <tr key={movement.id} className="border-b last:border-b-0">
                           <td className="px-3 py-3 text-start">{dateFormatter(movement.date)}</td>
-                          <td className="px-3 py-3 text-start">
-                            {t(
-                              movement.type === "company_purchase"
-                                ? "common:company_purchase"
-                                : movement.type === "process"
-                                  ? "common:paddy_process"
-                                  : "common:farmer_exchange"
-                            )}
-                          </td>
+                          <td className="px-3 py-3 text-start">{typeLabel(movement.type)}</td>
                           <td className="px-3 py-3 text-start">{movement.ownerName}</td>
                           <td className="px-3 py-3 text-start">{movement.paddyVariety}</td>
                           <td className="px-3 py-3 text-start">{fmtW(movement.paddyQuantityKg)}</td>

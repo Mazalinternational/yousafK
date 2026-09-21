@@ -440,6 +440,7 @@
     "rice_issued":  "Rice Issued",
     "recent_movements":  "Recent Movements",
     "recent_movements_description":  "Latest company purchases and farmer exchange transactions.",
+    "recent_movements_search_placeholder": "Search by variety, type, farmer, payment…",
     "company_purchase":  "Company Purchase",
     "paddy_process":  "Paddy Process",
     "farmer_exchange":  "Farmer Exchange",

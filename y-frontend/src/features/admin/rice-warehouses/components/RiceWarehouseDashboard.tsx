@@ -1,14 +1,17 @@
 import { motion } from "framer-motion";
+import { Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SimpleTablePagination } from "@/components/simple-table-pagination";
 import { StatusIndicator } from "@/components/status-indicator";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { sectionVariants, staggerContainerVariants } from "@/lib/motion";
 import { dateFormatter } from "@/utils/dataFormatters";
 import { formatWeightFromKg, stockValueClassName } from "@/utils/weightUnit";
 import { useRiceWarehouseDashboard } from "../hooks";
+import type { RiceDashboard } from "../schemas/rice-dashboard";
 
 function formatNumber(value: string | number, options?: Intl.NumberFormatOptions) {
   return new Intl.NumberFormat("en-US", {
@@ -30,15 +33,79 @@ export function RiceWarehouseDashboard() {
   const { data, isLoading, error } = useRiceWarehouseDashboard();
   const [pageNumber, setPageNumber] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [searchQuery, setSearchQuery] = useState("");
   const fmtW = (kg: string | number) => formatWeightFromKg(kg, t);
   const bookStockKg = Number(data?.summary.totalInKg ?? 0) - Number(data?.summary.totalOutKg ?? 0);
 
-  const movements = data?.recentMovements ?? [];
+  const typeLabel = (
+    type: "rice_entry" | "process_rice_in" | "farmer_exchange_issue" | "buyer_sale" | "rice_charity",
+  ) =>
+    t(
+      type === "rice_entry"
+        ? "common:rice_entry"
+        : type === "process_rice_in"
+          ? "common:process_rice_in"
+          : type === "buyer_sale"
+            ? "common:buyer_sale"
+            : type === "rice_charity"
+              ? "common:rice_charity"
+              : "common:farmer_exchange_issue",
+    );
+
+  const paymentLabel = (m: RiceDashboard["recentMovements"][number]) => {
+    if (m.type === "buyer_sale") {
+      const bits: string[] = [];
+      if (m.paymentType) {
+        bits.push(t(`common:${m.paymentType}`));
+      }
+      if (m.paymentChannel === "saraf" && m.sarafName) {
+        bits.push(`${t("common:rice_sale_route_saraf")}: ${m.sarafName}`);
+      } else if (m.paymentChannel === "saraf") {
+        bits.push(t("common:rice_sale_route_saraf"));
+      } else if (m.paidInCash) {
+        bits.push(t("common:rice_sale_cash"));
+      }
+      return bits.length > 0 ? bits.join(" · ") : "—";
+    }
+    if (m.type === "rice_entry" && m.paymentType) {
+      return t(`common:${m.paymentType}`);
+    }
+    return "—";
+  };
+
+  const movements = useMemo(() => {
+    const rows = data?.recentMovements ?? [];
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return rows;
+
+    return rows.filter((movement) => {
+      const haystack = [
+        typeLabel(movement.type),
+        movement.type,
+        movement.ownerName,
+        movement.variety,
+        movement.billNo,
+        movement.totalAmount,
+        movement.paidAmount,
+        movement.remainingAmount,
+        movement.paymentType,
+        movement.paymentChannel,
+        movement.sarafName,
+        paymentLabel(movement),
+        dateFormatter(movement.date),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [data?.recentMovements, searchQuery, t]);
+
   const pageCount = Math.max(1, Math.ceil(movements.length / pageSize));
 
   useEffect(() => {
     setPageNumber(1);
-  }, [data?.season?.id, movements.length]);
+  }, [data?.season?.id, searchQuery]);
 
   useEffect(() => {
     if (pageNumber > pageCount) {
@@ -68,27 +135,6 @@ export function RiceWarehouseDashboard() {
 
   const fmtAmt = (v: string | null | undefined) =>
     v != null && v !== "" ? formatAmount(v) : "—";
-
-  const paymentLabel = (m: (typeof data.recentMovements)[number]) => {
-    if (m.type === "buyer_sale") {
-      const bits: string[] = [];
-      if (m.paymentType) {
-        bits.push(t(`common:${m.paymentType}`));
-      }
-      if (m.paymentChannel === "saraf" && m.sarafName) {
-        bits.push(`${t("common:rice_sale_route_saraf")}: ${m.sarafName}`);
-      } else if (m.paymentChannel === "saraf") {
-        bits.push(t("common:rice_sale_route_saraf"));
-      } else if (m.paidInCash) {
-        bits.push(t("common:rice_sale_cash"));
-      }
-      return bits.length > 0 ? bits.join(" · ") : "—";
-    }
-    if (m.type === "rice_entry" && m.paymentType) {
-      return t(`common:${m.paymentType}`);
-    }
-    return "—";
-  };
 
   return (
     <div className="flex w-full min-w-0 flex-col p-4 md:p-6 lg:p-8">
@@ -309,7 +355,20 @@ export function RiceWarehouseDashboard() {
               <CardTitle>{t("common:recent_movements")}</CardTitle>
               <CardDescription>{t("common:recent_movements_description")}</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              <div className="relative max-w-md">
+                <Search
+                  className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden
+                />
+                <Input
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder={t("common:recent_movements_search_placeholder")}
+                  className="ps-9"
+                  aria-label={t("common:search")}
+                />
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[900px] text-start text-sm">
                   <thead>
@@ -336,19 +395,7 @@ export function RiceWarehouseDashboard() {
                       pagedMovements.map((movement) => (
                         <tr key={movement.id} className="border-b last:border-b-0">
                           <td className="px-3 py-3 text-start">{dateFormatter(movement.date)}</td>
-                          <td className="px-3 py-3 text-start">
-                            {t(
-                              movement.type === "rice_entry"
-                                ? "common:rice_entry"
-                                : movement.type === "process_rice_in"
-                                  ? "common:process_rice_in"
-                                  : movement.type === "buyer_sale"
-                                    ? "common:buyer_sale"
-                                    : movement.type === "rice_charity"
-                                      ? "common:rice_charity"
-                                      : "common:farmer_exchange_issue"
-                            )}
-                          </td>
+                          <td className="px-3 py-3 text-start">{typeLabel(movement.type)}</td>
                           <td className="px-3 py-3 text-start">{movement.variety}</td>
                           <td className="px-3 py-3 text-start">{fmtW(movement.quantityKg)}</td>
                           <td className="px-3 py-3 text-start font-mono text-xs">
