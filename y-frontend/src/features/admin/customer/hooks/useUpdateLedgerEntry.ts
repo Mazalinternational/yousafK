@@ -48,6 +48,8 @@ export const useUpdateLedgerEntry = (customerId?: string) => {
       queryClient.invalidateQueries({ queryKey: ["cash"] });
       queryClient.invalidateQueries({ queryKey: ["sarafi"] });
       queryClient.invalidateQueries({ queryKey: ["rice-warehouse-dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["paddy-warehouses"] });
+      queryClient.invalidateQueries({ queryKey: ["paddy-warehouse-dashboard"] });
       queryClient.invalidateQueries({ queryKey: ["general-dashboard"] });
       queryClient.invalidateQueries({ queryKey: ["general-dashboard"] });
     },

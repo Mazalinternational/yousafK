@@ -264,24 +264,41 @@ export class ReportSnapshotsService {
     if (canSeeModule(user, 'rice_warehouses')) {
       const varietyNames = new Set<string>();
 
-      const [warehouseRows, processRows] = await Promise.all([
-        (this.prisma as any).riceWarehouse.findMany({
-          where: { seasonId },
-          select: { variety: true },
-          distinct: ['variety'],
-        }),
-        prisma.processRiceEntry.findMany({
-          where: { seasonId },
-          select: { variety: true },
-          distinct: ['variety'],
-        }),
-      ]);
+      const [warehouseRows, processRows, saleRows, charityRows] =
+        await Promise.all([
+          (this.prisma as any).riceWarehouse.findMany({
+            where: { seasonId },
+            select: { variety: true },
+            distinct: ['variety'],
+          }),
+          prisma.processRiceEntry.findMany({
+            where: { seasonId },
+            select: { variety: true },
+            distinct: ['variety'],
+          }),
+          (this.prisma as any).riceSale.findMany({
+            where: { seasonId },
+            select: { riceVariety: true },
+            distinct: ['riceVariety'],
+          }),
+          (this.prisma as any).riceCharity.findMany({
+            where: { seasonId },
+            select: { riceVariety: true },
+            distinct: ['riceVariety'],
+          }),
+        ]);
 
       for (const row of warehouseRows) {
         if (row.variety?.trim()) varietyNames.add(row.variety.trim());
       }
       for (const row of processRows) {
         if (row.variety?.trim()) varietyNames.add(row.variety.trim());
+      }
+      for (const row of saleRows) {
+        if (row.riceVariety?.trim()) varietyNames.add(row.riceVariety.trim());
+      }
+      for (const row of charityRows) {
+        if (row.riceVariety?.trim()) varietyNames.add(row.riceVariety.trim());
       }
 
       const riceVarietyStockRows =
@@ -293,8 +310,8 @@ export class ReportSnapshotsService {
       const varieties: Array<{ variety: string; currentStockKg: string }> = [];
       let currentStockKg = new Prisma.Decimal(0);
 
-      // Book remaining (same idea as rice warehouse dashboard) — include zeros/negatives
-      // so the report stock balance is visible even after overselling.
+      // Book remaining (same as rice warehouse dashboard) — billed sales outs,
+      // include zeros/negatives so oversell seasons match the dashboard tile.
       for (const variety of [...varietyNames].sort()) {
         const kg = await this.riceSaleService.getAvailableRiceVarietyKg({
           seasonId,
@@ -441,6 +458,7 @@ export class ReportSnapshotsService {
       const kg = await this.riceSaleService.getAvailableRiceVarietyKg({
         seasonId,
         riceVariety: row.variety,
+        floorAtZero: false,
       });
       total = total.plus(kg);
     }

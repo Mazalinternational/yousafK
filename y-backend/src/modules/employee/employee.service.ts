@@ -8,6 +8,8 @@ import { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
 import {
   compareShamsiMonthKeys,
   currentShamsiMonthKey,
+  salaryMonthToShamsiKey,
+  shamsiMonthKey,
   shamsiMonthStartGregorian,
   todayGregorianDate,
 } from '../../common/shamsi-calendar.js';
@@ -289,7 +291,8 @@ export class EmployeeService {
     const currentMonthKey = currentShamsiMonthKey();
     const monthStart = shamsiMonthStartGregorian(currentMonthKey);
 
-    const employeeRows = await this.prisma.$queryRaw<any[]>(Prisma.sql`
+    const [employeeRows, salaryMonthRows] = await Promise.all([
+      this.prisma.$queryRaw<any[]>(Prisma.sql`
       SELECT
         e."id"::text AS "id",
         e."employee_no" AS "employeeNo",
@@ -317,7 +320,48 @@ export class EmployeeService {
       ) AS monthly_entries ON monthly_entries."employeeId" = e."id"
       WHERE e."season_id" = ${season.id}
       ORDER BY e."name" ASC, e."employee_no" ASC
-    `);
+    `),
+      this.prisma.$queryRaw<
+        Array<{
+          employeeId: string;
+          salaryMonth: Date;
+          paid: string;
+        }>
+      >(Prisma.sql`
+        SELECT
+          ele."employee_id"::text AS "employeeId",
+          ele."salary_month" AS "salaryMonth",
+          COALESCE(
+            SUM(
+              CASE
+                WHEN ele."entry_type" = 'salary_payment' THEN ele."amount"
+                ELSE 0
+              END
+            ),
+            0
+          )::text AS "paid"
+        FROM "employee_ledger_entries" ele
+        INNER JOIN "employees" e ON e."id" = ele."employee_id"
+        WHERE e."season_id" = ${season.id}
+          AND ele."entry_type" = 'salary_payment'
+        GROUP BY ele."employee_id", ele."salary_month"
+      `),
+    ]);
+
+    const paymentsByEmployee = new Map<
+      string,
+      Array<{ salaryMonth: Date; paid: Prisma.Decimal }>
+    >();
+
+    for (const monthRow of salaryMonthRows) {
+      const employeeId = String(monthRow.employeeId);
+      const current = paymentsByEmployee.get(employeeId) ?? [];
+      current.push({
+        salaryMonth: monthRow.salaryMonth,
+        paid: new Prisma.Decimal(monthRow.paid ?? 0),
+      });
+      paymentsByEmployee.set(employeeId, current);
+    }
 
     const employees = employeeRows.map((row) => {
       const monthlySalary = new Prisma.Decimal(row.monthlySalary ?? 0);
@@ -363,6 +407,18 @@ export class EmployeeService {
         grossPayableThisMonth,
         paidThisMonth,
       );
+      const joinMonthKey = shamsiMonthKey(row.joinDate);
+      const paidFromHire = (paymentsByEmployee.get(String(row.id)) ?? []).reduce(
+        (sum, entry) => {
+          const monthKey = salaryMonthToShamsiKey(entry.salaryMonth);
+          const isFromHireThroughNow =
+            compareShamsiMonthKeys(monthKey, joinMonthKey) >= 0 &&
+            compareShamsiMonthKeys(monthKey, accrualEndMonthKey) <= 0;
+
+          return isFromHireThroughNow ? sum.plus(entry.paid) : sum;
+        },
+        new Prisma.Decimal(0),
+      );
 
       return {
         id: String(row.id),
@@ -373,8 +429,10 @@ export class EmployeeService {
         paymentStatus,
         phoneNo: row.phoneNo,
         monthlySalary: monthlySalary.toFixed(2),
+        joinDate: row.joinDate,
         payableThisMonth: payableThisMonth.toFixed(2),
         paidThisMonth: paidThisMonth.toFixed(2),
+        paidFromHire: paidFromHire.toFixed(2),
         deductionsThisMonth: deductionsThisMonth.toFixed(2),
         remainingAmount: remainingAmount.toFixed(2),
         weOweEmployeeAmount: weOweEmployeeAmount.toFixed(2),
@@ -387,6 +445,7 @@ export class EmployeeService {
         const monthlySalary = new Prisma.Decimal(employee.monthlySalary);
         const payableThisMonth = new Prisma.Decimal(employee.payableThisMonth);
         const paidThisMonth = new Prisma.Decimal(employee.paidThisMonth);
+        const paidFromHire = new Prisma.Decimal(employee.paidFromHire);
         const deductionsThisMonth = new Prisma.Decimal(
           employee.deductionsThisMonth,
         );
@@ -408,6 +467,7 @@ export class EmployeeService {
             accumulator.totalPayableThisMonth.plus(payableThisMonth),
           totalPaidThisMonth:
             accumulator.totalPaidThisMonth.plus(paidThisMonth),
+          totalPaidFromHire: accumulator.totalPaidFromHire.plus(paidFromHire),
           totalDeductionsThisMonth:
             accumulator.totalDeductionsThisMonth.plus(deductionsThisMonth),
           totalRemainingAmount:
@@ -421,6 +481,7 @@ export class EmployeeService {
         totalMonthlySalary: new Prisma.Decimal(0),
         totalPayableThisMonth: new Prisma.Decimal(0),
         totalPaidThisMonth: new Prisma.Decimal(0),
+        totalPaidFromHire: new Prisma.Decimal(0),
         totalDeductionsThisMonth: new Prisma.Decimal(0),
         totalRemainingAmount: new Prisma.Decimal(0),
       },
@@ -463,6 +524,11 @@ export class EmployeeService {
         {
           label: 'paid_salary_this_month',
           value: totals.totalPaidThisMonth.toFixed(2),
+          unit: 'amount',
+        },
+        {
+          label: 'paid_salary_from_hire',
+          value: totals.totalPaidFromHire.toFixed(2),
           unit: 'amount',
         },
         {

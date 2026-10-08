@@ -28,6 +28,8 @@ export const useCustomers = (filters: CustomersFilter = {}) => {
           pageSize: filters.pageSize || 10,
           query: filters.query || undefined,
           type: filters.type || undefined,
+          fromDate: filters.fromDate || undefined,
+          toDate: filters.toDate || undefined,
           sortBy: wantsNameSort ? "createdAt" : filters.sortBy || undefined,
           sortByAction: sortDirection,
           seasonId: filters.seasonId || undefined,

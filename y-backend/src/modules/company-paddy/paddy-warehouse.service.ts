@@ -431,6 +431,10 @@ export class PaddyWarehouseService {
       };
     }
 
+    await this.customerLedgerService.reconcilePaddySellerWarehousePaymentsForSeason(
+      activeSeason.id,
+    );
+
     const [companyEntries, farmerEntries, processEntries] = await Promise.all([
       this.companyOwnedPaddyWarehouseModel.findMany({
         where: { seasonId: activeSeason.id },

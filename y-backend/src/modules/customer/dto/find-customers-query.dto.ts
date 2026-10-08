@@ -13,4 +13,6 @@ export class FindCustomersQueryDto {
   sortDirection?: 'asc' | 'desc';
   sortByAction?: 'asc' | 'desc';
   seasonId?: string;
+  fromDate?: string;
+  toDate?: string;
 }

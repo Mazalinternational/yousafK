@@ -27,6 +27,8 @@ export const useAddSellerBalanceAdjustment = (customerId?: string) => {
       queryClient.invalidateQueries({ queryKey: ["customer-account", customerId] });
       queryClient.invalidateQueries({ queryKey: ["customer-account"] });
       queryClient.invalidateQueries({ queryKey: ["customers"] });
+      queryClient.invalidateQueries({ queryKey: ["paddy-warehouses"] });
+      queryClient.invalidateQueries({ queryKey: ["paddy-warehouse-dashboard"] });
       queryClient.invalidateQueries({ queryKey: ["general-dashboard"] });
     },
     onError: (error) => {

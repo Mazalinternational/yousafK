@@ -15,7 +15,6 @@ import { CashService } from '../cash/cash.service.js';
 import { CurrencyService } from '../currency/currency.service.js';
 import { SarafLedgerService } from '../sarafi/saraf-ledger.service.js';
 import { SeasonService } from '../season/season.service.js';
-import { RiceSaleService } from '../rice-sale/rice-sale.service.js';
 import { VarietyService } from '../variety/variety.service.js';
 import { CreateBuyerBalanceAdjustmentDto } from './dto/create-buyer-balance-adjustment.dto.js';
 import { CreateBuyerPaymentDto } from './dto/create-buyer-payment.dto.js';
@@ -144,7 +143,6 @@ export class CustomerLedgerService {
     private readonly currencyService: CurrencyService,
     private readonly sarafLedgerService: SarafLedgerService,
     private readonly cashService: CashService,
-    private readonly riceSaleService: RiceSaleService,
   ) {}
 
   private get customerModel() {
@@ -902,7 +900,7 @@ export class CustomerLedgerService {
         : CustomerLedgerEntryType.seller_credit;
 
     const created = await this.prisma.$transaction(async (tx) => {
-      return tx.customerLedgerEntry.create({
+      const entry = await tx.customerLedgerEntry.create({
         data: {
           ledgerId: ledger.id,
           customerId: customer.id,
@@ -919,6 +917,9 @@ export class CustomerLedgerService {
         },
         select: ledgerEntrySelect,
       });
+
+      await this.reconcilePaddySellerWarehousePayments(tx, customer.id);
+      return entry;
     });
 
     return this.serializeLedgerEntry(created);
@@ -1777,18 +1778,8 @@ export class CustomerLedgerService {
       throw new BadRequestException('Ledger entry is missing rice quantity');
     }
 
-    const unit = normalizeWeightUnit(entry.unit ?? APP_WEIGHT_UNIT);
-    const requestedKg = toKilograms(new Prisma.Decimal(riceQuantity), unit);
-    const availableKg = await this.riceSaleService.getAvailableRiceVarietyKg({
-      seasonId: customer.seasonId,
-      riceVariety,
-    });
-
-    if (requestedKg.greaterThan(availableKg)) {
-      throw new BadRequestException(
-        `Not enough ${riceVariety} rice in stock to fulfill this return`,
-      );
-    }
+    // Farmer rice returns reduce book stock the same way as sales.
+    // Do not block when book remaining is already zero or negative (oversell seasons).
 
     const fulfilledAt = new Date();
     const updated = await this.customerLedgerEntryModel.update({
@@ -1823,14 +1814,17 @@ export class CustomerLedgerService {
       }
 
       if (
-        entry.entryType === 'company_payment' &&
-        (customer.type === 'paddy_seller' || customer.type === 'rice_seller')
+        customer.type === 'paddy_seller' &&
+        (entry.entryType === 'company_payment' ||
+          entry.entryType === 'seller_debit' ||
+          entry.entryType === 'seller_credit')
       ) {
-        if (customer.type === 'paddy_seller') {
-          await this.reconcilePaddySellerWarehousePayments(tx, customer.id);
-        } else {
-          await this.reconcileRiceSellerWarehousePayments(tx, customer.id);
-        }
+        await this.reconcilePaddySellerWarehousePayments(tx, customer.id);
+      } else if (
+        customer.type === 'rice_seller' &&
+        entry.entryType === 'company_payment'
+      ) {
+        await this.reconcileRiceSellerWarehousePayments(tx, customer.id);
       }
     });
 
@@ -1878,7 +1872,7 @@ export class CustomerLedgerService {
       entry.entryType === 'seller_debit' ||
       entry.entryType === 'seller_credit'
     ) {
-      return this.updateBuyerBalanceAdjustmentEntry(entry, dto);
+      return this.updateBuyerBalanceAdjustmentEntry(customer, entry, dto);
     }
 
     if (entry.entryType === 'farmer_rice_return') {
@@ -2296,17 +2290,32 @@ export class CustomerLedgerService {
     tx: Prisma.TransactionClient,
     customerId: bigint,
   ) {
-    return tx.customerLedgerEntry.findMany({
+    const rows = await tx.customerLedgerEntry.findMany({
       where: {
         customerId,
-        entryType: 'company_payment',
-        counterpartyCustomerId: null,
-        paymentChannel: { in: ['cash', 'saraf'] },
+        OR: [
+          {
+            entryType: 'company_payment',
+            counterpartyCustomerId: null,
+            paymentChannel: { in: ['cash', 'saraf'] },
+          },
+          // Ledger credit is a payment with no cash or Saraf movement.
+          // Ledger debit increases what we owe and reverses that allocation.
+          { entryType: { in: ['seller_credit', 'seller_debit'] } },
+        ],
       },
       orderBy: [{ occurredAt: 'asc' }, { createdAt: 'asc' }],
       select: {
         amount: true,
+        entryType: true,
       },
+    });
+
+    return rows.map((row) => {
+      const amount = new Prisma.Decimal(row.amount ?? 0);
+      return {
+        amount: row.entryType === 'seller_debit' ? amount.negated() : amount,
+      };
     });
   }
 
@@ -2320,25 +2329,57 @@ export class CustomerLedgerService {
     sellerPayments: Array<{ amount: Prisma.Decimal | null }>,
     warehouseKind: 'paddy' | 'rice',
   ) {
+    const basePaid = warehouseState.map((warehouse) => warehouse.paidAmount);
+
     for (const payment of sellerPayments) {
-      let remaining = new Prisma.Decimal(payment.amount ?? 0);
-      if (remaining.lessThanOrEqualTo(0)) {
+      const signed = new Prisma.Decimal(payment.amount ?? 0);
+
+      if (signed.greaterThan(0)) {
+        let remaining = signed;
+
+        for (const warehouse of warehouseState) {
+          if (remaining.lessThanOrEqualTo(0)) {
+            break;
+          }
+
+          const owed = warehouse.totalAmount.minus(warehouse.paidAmount);
+          if (owed.lessThanOrEqualTo(0)) {
+            continue;
+          }
+
+          const applied = Prisma.Decimal.min(remaining, owed);
+          warehouse.paidAmount = warehouse.paidAmount.plus(applied);
+          remaining = remaining.minus(applied);
+        }
+
         continue;
       }
 
-      for (const warehouse of warehouseState) {
-        if (remaining.lessThanOrEqualTo(0)) {
-          break;
+      if (signed.lessThan(0)) {
+        let toReverse = signed.abs();
+
+        for (
+          let index = warehouseState.length - 1;
+          index >= 0 && toReverse.greaterThan(0);
+          index -= 1
+        ) {
+          const warehouse = warehouseState[index];
+          const reversible = warehouse.paidAmount.minus(basePaid[index]);
+          if (reversible.lessThanOrEqualTo(0)) {
+            continue;
+          }
+
+          const reversed = Prisma.Decimal.min(toReverse, reversible);
+          warehouse.paidAmount = warehouse.paidAmount.minus(reversed);
+          toReverse = toReverse.minus(reversed);
         }
 
-        const owed = warehouse.totalAmount.minus(warehouse.paidAmount);
-        if (owed.lessThanOrEqualTo(0)) {
-          continue;
+        // Debit beyond cash and earlier credits still increases what we owe,
+        // so the newest purchase carries the extra unpaid amount.
+        if (toReverse.greaterThan(0) && warehouseState.length > 0) {
+          const latest = warehouseState[warehouseState.length - 1];
+          latest.paidAmount = latest.paidAmount.minus(toReverse);
         }
-
-        const applied = Prisma.Decimal.min(remaining, owed);
-        warehouse.paidAmount = warehouse.paidAmount.plus(applied);
-        remaining = remaining.minus(applied);
       }
     }
 
@@ -2373,6 +2414,26 @@ export class CustomerLedgerService {
         });
       }
     }
+  }
+
+  async reconcilePaddySellerWarehousePaymentsForSeason(seasonId: string) {
+    const sellers = await this.customerModel.findMany({
+      where: { seasonId, type: 'paddy_seller' },
+      select: { id: true },
+    });
+
+    if (!sellers.length) {
+      return;
+    }
+
+    await this.prisma.$transaction(
+      async (tx) => {
+        for (const seller of sellers) {
+          await this.reconcilePaddySellerWarehousePayments(tx, seller.id);
+        }
+      },
+      { timeout: 20000 },
+    );
   }
 
   private async reconcilePaddySellerWarehousePayments(
@@ -5388,6 +5449,7 @@ export class CustomerLedgerService {
   }
 
   private async updateBuyerBalanceAdjustmentEntry(
+    customer: { id: bigint; type: string },
     entry: any,
     dto: UpdateLedgerEntryDto,
   ) {
@@ -5410,17 +5472,29 @@ export class CustomerLedgerService {
     const currencyId =
       await this.currencyService.requireActiveCurrencyId(currencyIdTrimmed);
 
-    const updated = await this.customerLedgerEntryModel.update({
-      where: { id: entry.id },
-      data: {
-        amount: totalAmount,
-        currencyId,
-        occurredAt: paymentDate,
-        notes,
-        paymentChannel: null,
-        sarafId: null,
-      },
-      select: ledgerEntrySelect,
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.customerLedgerEntry.update({
+        where: { id: entry.id },
+        data: {
+          amount: totalAmount,
+          currencyId,
+          occurredAt: paymentDate,
+          notes,
+          paymentChannel: null,
+          sarafId: null,
+        },
+        select: ledgerEntrySelect,
+      });
+
+      if (
+        customer.type === 'paddy_seller' &&
+        (entry.entryType === 'seller_debit' ||
+          entry.entryType === 'seller_credit')
+      ) {
+        await this.reconcilePaddySellerWarehousePayments(tx, customer.id);
+      }
+
+      return row;
     });
 
     return this.serializeLedgerEntry(updated);

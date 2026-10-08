@@ -2,9 +2,17 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PlusIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import DatePickerComponent from "@/components/date-picker";
 import { DataTable } from "@/components/data-table";
 import { StatusIndicator } from "@/components/status-indicator";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useDataTableColumns } from "@/hooks/use-datatable-columns";
 import CustomDialog from "@/components/CustomDialog";
@@ -15,6 +23,7 @@ import { useCustomers } from "../hooks/useCustomers";
 import { useDeleteCustomer } from "../hooks/useDeleteCustomer";
 import { useUpdateCustomer } from "../hooks/useUpdateCustomer";
 import type { Customer, CustomerFormValues } from "../schemas/customer";
+import type { CustomersFilter } from "../types";
 import { getCustomerColumns } from "./columns";
 import { CustomerForm } from "./CustomerForm";
 
@@ -24,6 +33,9 @@ export function CustomerList() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [pagination, setPagination] = useState({
     pageNumber: 1,
@@ -37,11 +49,14 @@ export function CustomerList() {
     sortDirection: "desc",
   });
 
-  const { hasAnyTypeAccess } = useAllowedCustomerTypes();
+  const { allowedTypes, hasAnyTypeAccess } = useAllowedCustomerTypes();
   const { activeSeason, isLoadingActiveSeason, canCreate } = useSeasonWriteAccess();
   const { data, isLoading, isFetching, error } = useCustomers({
     ...pagination,
     query: debouncedSearchTerm,
+    type: typeFilter === "all" ? undefined : (typeFilter as CustomersFilter["type"]),
+    fromDate: fromDate || undefined,
+    toDate: toDate || undefined,
     sortBy: sorting.sortBy,
     sortByAction: sorting.sortDirection,
   });
@@ -154,10 +169,56 @@ export function CustomerList() {
           columns={columns}
           data={data?.items ?? []}
           onRowClick={(row) => navigate(`/yk/customers/${row.id}`)}
+          searchPlaceholder={t("common:customer_search_placeholder")}
           onSearch={(search) => {
             setSearchTerm(search);
             setPagination((prev) => ({ ...prev, pageNumber: 1 }));
           }}
+          filterTrigger={
+            <div className="flex flex-wrap items-center gap-2">
+              <Select
+                value={typeFilter}
+                onValueChange={(value) => {
+                  setTypeFilter(value);
+                  setPagination((prev) => ({ ...prev, pageNumber: 1 }));
+                }}
+              >
+                <SelectTrigger className="w-[180px] bg-background/80">
+                  <SelectValue placeholder={t("common:type")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("common:all_types")}</SelectItem>
+                  {allowedTypes.map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {t(`common:${type}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="w-[150px]">
+                <DatePickerComponent
+                  name="customer-from-date"
+                  value={fromDate}
+                  placeholder={t("common:customer_filter_from_date")}
+                  onChange={(value) => {
+                    setFromDate(value);
+                    setPagination((prev) => ({ ...prev, pageNumber: 1 }));
+                  }}
+                />
+              </div>
+              <div className="w-[150px]">
+                <DatePickerComponent
+                  name="customer-to-date"
+                  value={toDate}
+                  placeholder={t("common:customer_filter_to_date")}
+                  onChange={(value) => {
+                    setToDate(value);
+                    setPagination((prev) => ({ ...prev, pageNumber: 1 }));
+                  }}
+                />
+              </div>
+            </div>
+          }
           pagination={pagination}
           sorting={sorting}
           onSortingChange={setSorting}

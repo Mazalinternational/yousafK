@@ -22,6 +22,8 @@ export class EmployeeDashboardEmployeeDto {
   phoneNo: string;
   monthlySalary: string;
   paidThisMonth: string;
+  paidFromHire: string;
+  joinDate?: Date | string | null;
   remainingAmount: string;
   weOweEmployeeAmount: string;
   lastPaymentDate?: Date | null;

@@ -7,7 +7,6 @@ import { Prisma } from '@prisma/client';
 import {
   fromKilograms,
   normalizeWeightUnit,
-  resolveFromStockWeightKg,
   splitQuantityAgainstStock,
   toKilograms,
 } from '../../common/weight/weight-unit.util.js';
@@ -450,8 +449,11 @@ export class RiceSaleService {
   }
 
   /**
-   * Physical rice stock available for a variety (kg): warehouse in + process rice in − sales − charity − fulfilled farmer rice returns.
-   * Unfulfilled farmer rice return ledger entries do not reduce stock until issued via the customer ledger.
+   * Book rice stock for a variety (kg): warehouse in + process rice in
+   * − billed sales − charity − fulfilled farmer rice returns.
+   * Uses billed sale quantity (not fromStockWeightKg) so oversell /
+   * legacy from_stock=0 rows match the rice warehouse dashboard.
+   * Default floors at zero for sellable stock; pass floorAtZero: false for book remaining.
    */
   async getAvailableRiceVarietyKg(params: {
     seasonId: string;
@@ -500,8 +502,6 @@ export class RiceSaleService {
         select: {
           quantity: true,
           unit: true,
-          fromStockWeightKg: true,
-          oversoldWeightKg: true,
         },
       }),
       (this.prisma as any).riceCharity.findMany({
@@ -538,22 +538,15 @@ export class RiceSaleService {
       new Prisma.Decimal(0),
     );
 
+    // Book outs = billed sale quantity (matches rice warehouse dashboard).
+    // Do not use fromStockWeightKg — oversell/legacy rows often store 0 there
+    // and would leave report stock stuck near total inflows.
     const totalSalesOutKg = saleEntries.reduce(
       (
         sum: Prisma.Decimal,
-        entry: {
-          quantity: Prisma.Decimal;
-          unit: string;
-          fromStockWeightKg?: Prisma.Decimal | null;
-        },
+        entry: { quantity: Prisma.Decimal; unit: string },
       ) =>
-        sum.plus(
-          resolveFromStockWeightKg({
-            fromStockWeightKg: entry.fromStockWeightKg,
-            fallbackQuantity: entry.quantity,
-            fallbackUnit: entry.unit,
-          }),
-        ),
+        sum.plus(toKilograms(new Prisma.Decimal(entry.quantity), entry.unit)),
       new Prisma.Decimal(0),
     );
 

@@ -242,7 +242,7 @@ export function DataTable<TData, TValue>({
     >
       <motion.div
         variants={sectionVariants}
-        className="rounded-t-md border px-6 py-4 flex flex-row-reverse items-center justify-between gap-4 border-b-muted/50"
+        className="rounded-t-md border px-6 py-4 flex flex-row-reverse flex-wrap items-center justify-between gap-4 border-b-muted/50"
       >
         <div className="flex gap-4">
           <div>

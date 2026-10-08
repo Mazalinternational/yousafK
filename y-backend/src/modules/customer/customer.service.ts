@@ -9,11 +9,124 @@ import {
   assertCanAccessCustomerType,
   customerTypeWhereFilter,
 } from '../../common/rbac/customer-type-access.js';
+import { shamsiToGregorian } from '../../common/shamsi-calendar.js';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service.js';
 import { SeasonService } from '../season/season.service.js';
 import { CreateCustomerDto } from './dto/create-customer.dto.js';
 import { FindCustomersQueryDto } from './dto/find-customers-query.dto.js';
 import { UpdateCustomerDto } from './dto/update-customer.dto.js';
+
+const CUSTOMER_TYPE_SEARCH_TERMS: Array<{
+  type:
+    | 'paddy_farmer'
+    | 'paddy_seller'
+    | 'rice_seller'
+    | 'buyer'
+    | 'vendor'
+    | 'debtor';
+  terms: string[];
+}> = [
+  {
+    type: 'paddy_seller',
+    terms: [
+      'paddy seller',
+      'paddy_seller',
+      'فروشنده شلتوک',
+      'د شلتوک پلورونکی',
+    ],
+  },
+  {
+    type: 'paddy_farmer',
+    terms: [
+      'paddy farmer',
+      'paddy former',
+      'paddy_farmer',
+      'کشاورز شلتوک',
+      'د شلتوک کروندګر',
+    ],
+  },
+  {
+    type: 'buyer',
+    terms: ['paddy buyer', 'buyer', 'خریدار', 'پیرودونکی'],
+  },
+  {
+    type: 'rice_seller',
+    terms: ['rice seller', 'rice_seller', 'فروشنده برنج', 'د وریجو پلورونکی'],
+  },
+  {
+    type: 'vendor',
+    terms: ['vendor', 'عرضه کوونکی'],
+  },
+  {
+    type: 'debtor',
+    terms: ['debtor', 'بدهکار', 'پوروړ'],
+  },
+];
+
+function normalizeSearchText(value: string) {
+  return value.trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+}
+
+function customerTypesMatchingQuery(query: string) {
+  const normalized = normalizeSearchText(query);
+  if (normalized.length < 3) {
+    return [];
+  }
+
+  return CUSTOMER_TYPE_SEARCH_TERMS.filter((entry) =>
+    entry.terms.some((term) => {
+      const normalizedTerm = normalizeSearchText(term);
+      return (
+        normalizedTerm.includes(normalized) || normalized.includes(normalizedTerm)
+      );
+    }),
+  ).map((entry) => entry.type);
+}
+
+function gregorianDateFromSearch(query: string) {
+  const match = query
+    .trim()
+    .replace(/\//g, '-')
+    .match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+
+  if (month < 1 || month > 12 || day < 1 || day > 31) {
+    return null;
+  }
+
+  if (year >= 1300 && year <= 1500) {
+    try {
+      return shamsiToGregorian(year, month, day);
+    } catch {
+      return null;
+    }
+  }
+
+  if (year < 1900 || year > 2200) {
+    return null;
+  }
+
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function kabulDayRange(gregorianYmd: string) {
+  const start = new Date(`${gregorianYmd}T00:00:00+04:30`);
+  if (Number.isNaN(start.getTime())) {
+    return null;
+  }
+
+  return {
+    start,
+    end: new Date(start.getTime() + 24 * 60 * 60 * 1000),
+  };
+}
 
 const customerSelect = {
   id: true,
@@ -102,10 +215,23 @@ export class CustomerService {
       : 'createdAt';
 
     const typeFilter = customerTypeWhereFilter(user, filters.type);
+    const matchedTypes = query ? customerTypesMatchingQuery(query) : [];
+    const searchDate = query ? gregorianDateFromSearch(query) : null;
+    const searchDateRange = searchDate ? kabulDayRange(searchDate) : null;
+    const fromDate = this.resolveFilterDate(filters.fromDate, 'fromDate');
+    const toDate = this.resolveFilterDate(filters.toDate, 'toDate');
+    const createdAtFilter =
+      fromDate || toDate
+        ? {
+            ...(fromDate ? { gte: fromDate.start } : {}),
+            ...(toDate ? { lt: toDate.end } : {}),
+          }
+        : undefined;
 
     const where = {
       ...(filters.seasonId ? { seasonId: filters.seasonId } : {}),
       ...(typeFilter ?? {}),
+      ...(createdAtFilter ? { createdAt: createdAtFilter } : {}),
       ...(query
         ? {
             OR: [
@@ -114,6 +240,19 @@ export class CustomerService {
               { address: { contains: query, mode: 'insensitive' } },
               { notes: { contains: query, mode: 'insensitive' } },
               { seasonName: { contains: query, mode: 'insensitive' } },
+              ...(matchedTypes.length
+                ? [{ type: { in: matchedTypes } }]
+                : []),
+              ...(searchDateRange
+                ? [
+                    {
+                      createdAt: {
+                        gte: searchDateRange.start,
+                        lt: searchDateRange.end,
+                      },
+                    },
+                  ]
+                : []),
             ],
           }
         : {}),
@@ -237,6 +376,22 @@ export class CustomerService {
     } catch {
       throw new BadRequestException('id must be a valid bigint');
     }
+  }
+
+  private resolveFilterDate(value: string | undefined, fieldName: string) {
+    const trimmed = value?.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const gregorian = gregorianDateFromSearch(trimmed);
+    const range = gregorian ? kabulDayRange(gregorian) : null;
+
+    if (!range) {
+      throw new BadRequestException(`${fieldName} must be a valid date`);
+    }
+
+    return range;
   }
 
   private requireText(value: string, fieldName: string) {

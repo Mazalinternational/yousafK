@@ -188,9 +188,11 @@ type EmployeeStatusListProps = {
     paymentStatus: "paid" | "partial_paid" | "remaining";
     phoneNo: string;
     monthlySalary: string;
+    joinDate?: string | null;
     payableThisMonth: string;
     deductionsThisMonth: string;
     paidThisMonth: string;
+    paidFromHire: string;
     remainingAmount: string;
     weOweEmployeeAmount: string;
     lastPaymentDate?: string | null;
@@ -258,6 +260,16 @@ function EmployeeStatusList({
                     <span className="text-muted-foreground">{t("common:paid_this_month")}: </span>
                     <span className="tabular-nums">
                       {formatDisplayAmount(employee.paidThisMonth, locale)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">{t("common:hire_date")}: </span>
+                    {employee.joinDate ? dateFormatter(employee.joinDate) : "—"}
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">{t("common:paid_salary_from_hire")}: </span>
+                    <span className="font-medium tabular-nums">
+                      {formatDisplayAmount(employee.paidFromHire, locale)}
                     </span>
                   </div>
                   <div>

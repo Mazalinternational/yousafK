@@ -370,11 +370,12 @@ export function RiceWarehouseDashboard() {
                 />
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[900px] text-start text-sm">
+                <table className="w-full min-w-[1040px] text-start text-sm">
                   <thead>
                     <tr className="border-b text-muted-foreground">
                       <th className="px-3 py-2 text-start font-medium">{t("common:date")}</th>
                       <th className="px-3 py-2 text-start font-medium">{t("common:type")}</th>
+                      <th className="px-3 py-2 text-start font-medium">{t("common:name")}</th>
                       <th className="px-3 py-2 text-start font-medium">{t("common:variety")}</th>
                       <th className="px-3 py-2 text-start font-medium">{t("common:quantity")}</th>
                       <th className="px-3 py-2 text-start font-medium">{t("common:bill_no")}</th>
@@ -387,7 +388,7 @@ export function RiceWarehouseDashboard() {
                   <tbody>
                     {pagedMovements.length === 0 ? (
                       <tr>
-                        <td className="px-3 py-6 text-center text-muted-foreground" colSpan={9}>
+                        <td className="px-3 py-6 text-center text-muted-foreground" colSpan={10}>
                           {t("common:no_data")}
                         </td>
                       </tr>
@@ -396,6 +397,11 @@ export function RiceWarehouseDashboard() {
                         <tr key={movement.id} className="border-b last:border-b-0">
                           <td className="px-3 py-3 text-start">{dateFormatter(movement.date)}</td>
                           <td className="px-3 py-3 text-start">{typeLabel(movement.type)}</td>
+                          <td className="px-3 py-3 text-start font-medium">
+                            {movement.type === "process_rice_in"
+                              ? "—"
+                              : movement.ownerName?.trim() || "—"}
+                          </td>
                           <td className="px-3 py-3 text-start">{movement.variety}</td>
                           <td className="px-3 py-3 text-start">{fmtW(movement.quantityKg)}</td>
                           <td className="px-3 py-3 text-start font-mono text-xs">
