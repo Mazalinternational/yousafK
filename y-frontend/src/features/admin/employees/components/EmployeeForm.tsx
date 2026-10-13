@@ -35,6 +35,8 @@ export function EmployeeForm({
     label: t(`common:${status}`),
   }));
   const generatedEmployeeNo = `${activeSeason?.code?.trim().toUpperCase() || "SEASON"}-EMP-*`;
+  const showSalaryHistory =
+    (defaultValues?.salaryRevisionCount ?? 1) <= 1;
 
   const form = useForm<EmployeeFormValues>({
     resolver: zodResolver(employeeFormSchema) as Resolver<EmployeeFormValues>,
@@ -46,6 +48,10 @@ export function EmployeeForm({
       address: defaultValues?.address || "",
       joinDate: defaultValues?.joinDate?.slice(0, 10) || new Date().toISOString().slice(0, 10),
       monthlySalary: defaultValues?.monthlySalary || "",
+      salaryEffectiveDate: defaultValues
+        ? new Date().toISOString().slice(0, 10)
+        : "",
+      earlierMonthlySalary: defaultValues ? String(defaultValues.monthlySalary) : "",
       status: defaultValues?.status || "active",
       notes: defaultValues?.notes || "",
     },
@@ -60,6 +66,10 @@ export function EmployeeForm({
       address: defaultValues?.address || "",
       joinDate: defaultValues?.joinDate?.slice(0, 10) || new Date().toISOString().slice(0, 10),
       monthlySalary: defaultValues?.monthlySalary || "",
+      salaryEffectiveDate: defaultValues
+        ? new Date().toISOString().slice(0, 10)
+        : "",
+      earlierMonthlySalary: defaultValues ? String(defaultValues.monthlySalary) : "",
       status: defaultValues?.status || "active",
       notes: defaultValues?.notes || "",
     });
@@ -140,6 +150,33 @@ export function EmployeeForm({
             type="number"
             characterRestriction="none"
           />
+
+          {defaultValues ? (
+            <DatePickerField
+              name="salaryEffectiveDate"
+              label={t("common:salary_applies_from")}
+              control={form.control}
+              required
+            />
+          ) : null}
+
+          {defaultValues && showSalaryHistory ? (
+            <InputField
+              name="earlierMonthlySalary"
+              label={t("common:earlier_monthly_salary")}
+              placeholder={t("common:enter", { name: t("common:earlier_monthly_salary") })}
+              control={form.control}
+              type="number"
+              characterRestriction="none"
+            />
+          ) : null}
+
+          {defaultValues ? (
+            <p className="text-xs text-muted-foreground md:col-span-2">
+              {t("common:salary_applies_from_hint")}{" "}
+              {showSalaryHistory ? t("common:earlier_monthly_salary_hint") : ""}
+            </p>
+          ) : null}
 
           <DynamicLocalSelect
             name="status"

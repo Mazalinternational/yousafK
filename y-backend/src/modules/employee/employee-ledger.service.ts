@@ -24,12 +24,14 @@ import { SeasonService } from '../season/season.service.js';
 import { CreateCreditRepaymentDto } from './dto/create-credit-repayment.dto.js';
 import { CreateSalaryPaymentDto } from './dto/create-salary-payment.dto.js';
 import { UpdateSalaryLedgerEntryDto } from './dto/update-salary-ledger-entry.dto.js';
+import { listSalaryRevisionsByEmployee } from './employee-salary-history.js';
 import {
   calculateOutstandingPayable,
   calculatePayableForShamsiMonth,
   resolveAccrualEndMonthKey,
   resolveEmploymentEndDate,
   resolvePaymentStatus,
+  type SalaryRevision,
 } from './employee-salary.util.js';
 
 @Injectable()
@@ -114,6 +116,7 @@ export class EmployeeLedgerService {
     const serializedEntries = entries.map((entry) =>
       this.serializeLedgerEntryRow(entry),
     );
+    const salaryRevisions = await this.salaryRevisionsFor(BigInt(employee.id));
 
     return {
       employee: {
@@ -153,6 +156,7 @@ export class EmployeeLedgerService {
             inactiveDate: employee.inactiveDate,
             updatedAt: employee.updatedAt,
           },
+          salaryRevisions,
         ),
         entries: serializedEntries,
       },
@@ -589,6 +593,7 @@ export class EmployeeLedgerService {
       employee.inactiveDate,
       employee.updatedAt,
     );
+    const salaryRevisions = await this.salaryRevisionsFor(employee.id);
     const calculation = calculatePayableForShamsiMonth(
       new Prisma.Decimal(employee.monthlySalary),
       employee.joinDate,
@@ -596,6 +601,7 @@ export class EmployeeLedgerService {
       deductionsAmount,
       undefined,
       employmentEndDate,
+      salaryRevisions,
     );
 
     const accrualEndMonthKey = resolveAccrualEndMonthKey(
@@ -901,6 +907,7 @@ export class EmployeeLedgerService {
       inactiveDate?: string | Date | null;
       updatedAt?: string | Date | null;
     },
+    salaryRevisions: SalaryRevision[] = [],
   ) {
     const currentMonthKey = currentShamsiMonthKey();
     const employmentEndDate = resolveEmploymentEndDate(
@@ -956,6 +963,7 @@ export class EmployeeLedgerService {
         deductionsForMonth,
         undefined,
         employmentEndDate,
+        salaryRevisions,
       ).payableAmount;
 
       totalPayableAllMonths = totalPayableAllMonths.plus(payableForMonth);
@@ -1119,6 +1127,7 @@ export class EmployeeLedgerService {
       ? entries.filter((entry) => entry.id !== options.excludeEntryId)
       : entries;
 
+    const salaryRevisions = await this.salaryRevisionsFor(employee.id);
     const summary = this.buildSummary(
       new Prisma.Decimal(employee.monthlySalary),
       employee.joinDate,
@@ -1133,9 +1142,18 @@ export class EmployeeLedgerService {
         inactiveDate: employee.inactiveDate,
         updatedAt: employee.updatedAt,
       },
+      salaryRevisions,
     );
 
     return new Prisma.Decimal(summary.employeeCreditBalance);
+  }
+
+  private async salaryRevisionsFor(employeeId: bigint) {
+    const revisions = await listSalaryRevisionsByEmployee(this.prisma, [
+      employeeId,
+    ]);
+
+    return revisions.get(String(employeeId)) ?? [];
   }
 
   private assertEmployeeCanAccrueSalary(employee: {

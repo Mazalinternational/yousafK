@@ -16,6 +16,8 @@ export const useUpdateEmployee = () => {
       toast.success(t("common:update_success", { name: t("admin:employees") }));
       queryClient.invalidateQueries({ queryKey: ["employees"] });
       queryClient.invalidateQueries({ queryKey: ["employee-account"] });
+      queryClient.invalidateQueries({ queryKey: ["employee-dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["employee-salary-month-preview"] });
       queryClient.invalidateQueries({ queryKey: ["seasons"] });
       queryClient.invalidateQueries({ queryKey: ["active-season"] });
     },

@@ -18,6 +18,7 @@ export const EmployeeSchema = z.object({
   address: z.string().min(1),
   joinDate: z.string(),
   monthlySalary: z.union([z.string(), z.number()]).transform(String),
+  salaryRevisionCount: z.number().optional(),
   status: z.enum(EMPLOYEE_STATUS_OPTIONS),
   inactiveDate: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
@@ -48,6 +49,14 @@ export const createEmployeeFormSchema = (t: TFunction) =>
     address: z.string().trim().min(1, { message: t("common:employee_validation_required") }),
     joinDate: z.string().min(1, { message: t("common:employee_validation_required") }),
     monthlySalary: createDecimalField(t),
+    salaryEffectiveDate: z.string().optional().or(z.literal("")),
+    earlierMonthlySalary: z
+      .string()
+      .optional()
+      .or(z.literal(""))
+      .refine((value) => !value || (!Number.isNaN(Number(value)) && Number(value) > 0), {
+        message: t("common:employee_validation_positive_number"),
+      }),
     status: z.enum(EMPLOYEE_STATUS_OPTIONS),
     notes: z.string().optional().or(z.literal("")),
   });

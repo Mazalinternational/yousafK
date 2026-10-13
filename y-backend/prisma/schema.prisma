@@ -571,15 +571,30 @@ model Employee {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  season        Season               @relation(fields: [seasonId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  ledger        EmployeeLedger?
-  ledgerEntries EmployeeLedgerEntry[]
+  season          Season                   @relation(fields: [seasonId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  ledger          EmployeeLedger?
+  ledgerEntries   EmployeeLedgerEntry[]
+  salaryRevisions EmployeeSalaryRevision[]
 
   @@index([seasonId])
   @@index([employeeNo])
   @@index([name])
   @@index([status])
   @@map("employees")
+}
+
+model EmployeeSalaryRevision {
+  id            BigInt   @id @default(autoincrement()) @db.BigInt
+  employeeId    BigInt   @map("employee_id") @db.BigInt
+  monthlySalary Decimal  @map("monthly_salary") @db.Decimal(18, 2)
+  effectiveDate DateTime @map("effective_date") @db.Date
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([employeeId, effectiveDate])
+  @@index([employeeId])
+  @@map("employee_salary_revisions")
 }
 
 model EmployeeLedger {

@@ -7,8 +7,102 @@ import {
   parseShamsiMonthKey,
   salaryMonthToShamsiKey,
   shamsiMonthKey,
+  shamsiToGregorian,
   todayGregorianDate,
 } from '../../common/shamsi-calendar.js';
+
+export type SalaryRevision = {
+  monthlySalary: Prisma.Decimal;
+  effectiveDate: string;
+};
+
+export function salaryRevisionDateKey(value: string | Date) {
+  if (value instanceof Date) {
+    return todayGregorianDate(value);
+  }
+
+  const match = String(value).match(/(\d{4}-\d{2}-\d{2})/);
+  return match?.[1] ?? String(value).slice(0, 10);
+}
+
+export function normalizeSalaryRevisions(
+  revisions: Array<{
+    monthlySalary: Prisma.Decimal | string | number;
+    effectiveDate: string | Date;
+  }> = [],
+): SalaryRevision[] {
+  return revisions
+    .map((revision) => ({
+      monthlySalary: new Prisma.Decimal(revision.monthlySalary),
+      effectiveDate: salaryRevisionDateKey(revision.effectiveDate),
+    }))
+    .filter((revision) => /^\d{4}-\d{2}-\d{2}$/.test(revision.effectiveDate))
+    .sort((left, right) => left.effectiveDate.localeCompare(right.effectiveDate));
+}
+
+function salaryRateOnDate(
+  dateKey: string,
+  revisions: SalaryRevision[],
+  fallback: Prisma.Decimal,
+) {
+  let rate = fallback;
+
+  for (const revision of revisions) {
+    if (revision.effectiveDate <= dateKey) {
+      rate = revision.monthlySalary;
+      continue;
+    }
+
+    break;
+  }
+
+  return rate;
+}
+
+function payableBaseSalary(params: {
+  monthlySalary: Prisma.Decimal;
+  revisions: SalaryRevision[];
+  year: number;
+  month: number;
+  startDay: number;
+  endDay: number;
+  daysInMonth: number;
+}) {
+  const payableDays = Math.max(params.endDay - params.startDay + 1, 0);
+
+  if (payableDays <= 0) {
+    return new Prisma.Decimal(0);
+  }
+
+  const segments: Array<{ rate: Prisma.Decimal; days: number }> = [];
+
+  for (let day = params.startDay; day <= params.endDay; day += 1) {
+    const rate = salaryRateOnDate(
+      shamsiToGregorian(params.year, params.month, day),
+      params.revisions,
+      params.monthlySalary,
+    );
+    const current = segments[segments.length - 1];
+
+    if (current && current.rate.equals(rate)) {
+      current.days += 1;
+    } else {
+      segments.push({ rate, days: 1 });
+    }
+  }
+
+  if (segments.length === 1 && payableDays === params.daysInMonth) {
+    return segments[0].rate;
+  }
+
+  return segments
+    .reduce(
+      (sum, segment) =>
+        sum.plus(segment.rate.mul(segment.days).div(params.daysInMonth)),
+      new Prisma.Decimal(0),
+    )
+    .toDecimalPlaces(2);
+}
 
 export function resolveEmploymentEndDate(
   status: string,
@@ -31,6 +125,7 @@ export function resolveEmploymentEndDate(
  * - Current (as-of) month: from month start (or join day) through today's Shamsi day.
  * - Employment end date: pay through that Shamsi day only; later months are zero.
  * - Future months (for advance preview on active staff): full planned month after hire.
+ * - Salary revisions apply from their effective date. Earlier days keep the previous rate.
  */
 export function calculatePayableForShamsiMonth(
   monthlySalary: Prisma.Decimal,
@@ -39,6 +134,10 @@ export function calculatePayableForShamsiMonth(
   deductions: Prisma.Decimal,
   asOfDate?: string | Date,
   employmentEndDate?: string | Date | null,
+  salaryRevisions: Array<{
+    monthlySalary: Prisma.Decimal | string | number;
+    effectiveDate: string | Date;
+  }> = [],
 ) {
   const effectiveAsOfDate = employmentEndDate ?? asOfDate ?? todayGregorianDate();
   const joinShamsi = gregorianToShamsi(joinDate);
@@ -83,13 +182,17 @@ export function calculatePayableForShamsiMonth(
   const payableDays = Math.max(endDay - startDay + 1, 0);
   const isPartialMonth = payableDays > 0 && payableDays < daysInMonth;
   const isHireMonth = joinMonthKey === monthKey;
+  const revisions = normalizeSalaryRevisions(salaryRevisions);
 
-  const baseSalary =
-    payableDays <= 0
-      ? new Prisma.Decimal(0)
-      : payableDays === daysInMonth
-        ? monthlySalary
-        : monthlySalary.mul(payableDays).div(daysInMonth).toDecimalPlaces(2);
+  const baseSalary = payableBaseSalary({
+    monthlySalary,
+    revisions,
+    year,
+    month,
+    startDay,
+    endDay,
+    daysInMonth,
+  });
 
   const adjustedSalary = baseSalary.minus(deductions);
   return {

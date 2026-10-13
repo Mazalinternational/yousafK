@@ -15,11 +15,16 @@ import {
 } from '../../common/shamsi-calendar.js';
 import { SeasonService } from '../season/season.service.js';
 import {
+  syncEmployeeSalaryHistory,
+  upsertSalaryRevision,
+} from './employee-salary-history.js';
+import {
   calculateOutstandingPayable,
   calculatePayableForShamsiMonth,
   resolveAccrualEndMonthKey,
   resolveEmploymentEndDate,
   resolvePaymentStatus,
+  salaryRevisionDateKey,
 } from './employee-salary.util.js';
 import { CreateEmployeeDto } from './dto/create-employee.dto.js';
 import { EmployeeDashboardDto } from './dto/employee-dashboard.dto.js';
@@ -102,6 +107,8 @@ export class EmployeeService {
           NOW()
         )
       `);
+
+      await upsertSalaryRevision(tx, employeeId, joinDate, monthlySalary);
 
       return String(employeeId);
     });
@@ -200,7 +207,12 @@ export class EmployeeService {
         e."updated_at" AS "updatedAt",
         s."id" AS "seasonRefId",
         s."name" AS "seasonRefName",
-        s."status"::text AS "seasonRefStatus"
+        s."status"::text AS "seasonRefStatus",
+        (
+          SELECT COUNT(*)::int
+          FROM "employee_salary_revisions" revision
+          WHERE revision."employee_id" = e."id"
+        ) AS "salaryRevisionCount"
       FROM "employees" e
       INNER JOIN "seasons" s ON s."id" = e."season_id"
       ${whereSql}
@@ -254,7 +266,12 @@ export class EmployeeService {
         e."updated_at" AS "updatedAt",
         s."id" AS "seasonRefId",
         s."name" AS "seasonRefName",
-        s."status"::text AS "seasonRefStatus"
+        s."status"::text AS "seasonRefStatus",
+        (
+          SELECT COUNT(*)::int
+          FROM "employee_salary_revisions" revision
+          WHERE revision."employee_id" = e."id"
+        ) AS "salaryRevisionCount"
       FROM "employees" e
       INNER JOIN "seasons" s ON s."id" = e."season_id"
       WHERE e."id" = ${this.parseId(id)}
@@ -291,7 +308,7 @@ export class EmployeeService {
     const currentMonthKey = currentShamsiMonthKey();
     const monthStart = shamsiMonthStartGregorian(currentMonthKey);
 
-    const [employeeRows, salaryMonthRows] = await Promise.all([
+    const [employeeRows, salaryMonthRows, salaryRevisionRows] = await Promise.all([
       this.prisma.$queryRaw<any[]>(Prisma.sql`
       SELECT
         e."id"::text AS "id",
@@ -346,6 +363,22 @@ export class EmployeeService {
           AND ele."entry_type" = 'salary_payment'
         GROUP BY ele."employee_id", ele."salary_month"
       `),
+      this.prisma.$queryRaw<
+        Array<{
+          employeeId: string;
+          monthlySalary: string;
+          effectiveDate: Date | string;
+        }>
+      >(Prisma.sql`
+        SELECT
+          revision."employee_id"::text AS "employeeId",
+          revision."monthly_salary"::text AS "monthlySalary",
+          revision."effective_date" AS "effectiveDate"
+        FROM "employee_salary_revisions" revision
+        INNER JOIN "employees" employee ON employee."id" = revision."employee_id"
+        WHERE employee."season_id" = ${season.id}
+        ORDER BY revision."employee_id" ASC, revision."effective_date" ASC, revision."id" ASC
+      `),
     ]);
 
     const paymentsByEmployee = new Map<
@@ -361,6 +394,21 @@ export class EmployeeService {
         paid: new Prisma.Decimal(monthRow.paid ?? 0),
       });
       paymentsByEmployee.set(employeeId, current);
+    }
+
+    const revisionsByEmployee = new Map<
+      string,
+      Array<{ monthlySalary: string; effectiveDate: Date | string }>
+    >();
+
+    for (const revision of salaryRevisionRows) {
+      const employeeId = String(revision.employeeId);
+      const current = revisionsByEmployee.get(employeeId) ?? [];
+      current.push({
+        monthlySalary: revision.monthlySalary,
+        effectiveDate: revision.effectiveDate,
+      });
+      revisionsByEmployee.set(employeeId, current);
     }
 
     const employees = employeeRows.map((row) => {
@@ -391,6 +439,7 @@ export class EmployeeService {
             deductionsThisMonth,
             todayGregorianDate(),
             employmentEndDate,
+            revisionsByEmployee.get(String(row.id)) ?? [],
           ).payableAmount;
       const rawRemainingAmount = grossPayableThisMonth.minus(paidThisMonth);
       const remainingAmount = rawRemainingAmount.greaterThan(0)
@@ -590,6 +639,20 @@ export class EmployeeService {
       updateEmployeeDto.notes !== undefined
         ? this.normalizeOptionalText(updateEmployeeDto.notes)
         : current.notes;
+    const salaryEffectiveDate = updateEmployeeDto.salaryEffectiveDate
+      ? this.requireDate(
+          updateEmployeeDto.salaryEffectiveDate,
+          'salaryEffectiveDate',
+        )
+      : null;
+    const earlierMonthlySalary =
+      updateEmployeeDto.earlierMonthlySalary !== undefined &&
+      String(updateEmployeeDto.earlierMonthlySalary).trim() !== ''
+        ? this.parsePositiveDecimal(
+            updateEmployeeDto.earlierMonthlySalary,
+            'earlierMonthlySalary',
+          )
+        : null;
     const wasInactive = current.status === 'inactive';
     const becomingInactive = status === 'inactive' && !wasInactive;
     const becomingActive = status === 'active' && wasInactive;
@@ -604,21 +667,34 @@ export class EmployeeService {
       inactiveDate = todayGregorianDate();
     }
 
-    await this.prisma.$executeRaw(Prisma.sql`
-      UPDATE "employees"
-      SET
-        "name" = ${name},
-        "position" = ${position},
-        "phone_no" = ${phoneNo},
-        "address" = ${address},
-        "join_date" = ${joinDate},
-        "monthly_salary" = ${monthlySalary},
-        "status" = ${status},
-        "inactive_date" = ${inactiveDate},
-        "notes" = ${notes},
-        "updated_at" = NOW()
-      WHERE "id" = ${this.parseId(id)}
-    `);
+    const employeeId = this.parseId(id);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw(Prisma.sql`
+        UPDATE "employees"
+        SET
+          "name" = ${name},
+          "position" = ${position},
+          "phone_no" = ${phoneNo},
+          "address" = ${address},
+          "join_date" = ${joinDate},
+          "monthly_salary" = ${monthlySalary},
+          "status" = ${status},
+          "inactive_date" = ${inactiveDate},
+          "notes" = ${notes},
+          "updated_at" = NOW()
+        WHERE "id" = ${employeeId}
+      `);
+
+      await syncEmployeeSalaryHistory(tx, employeeId, {
+        joinDate,
+        previousJoinDate: salaryRevisionDateKey(current.joinDate),
+        storedSalary: new Prisma.Decimal(current.monthlySalary),
+        newSalary: monthlySalary,
+        salaryEffectiveDate,
+        earlierMonthlySalary,
+      });
+    });
 
     return this.findOne(id);
   }
@@ -679,6 +755,7 @@ export class EmployeeService {
       status: row.status,
       inactiveDate: row.inactiveDate ?? null,
       notes: row.notes,
+      salaryRevisionCount: Number(row.salaryRevisionCount ?? 0),
       seasonId: row.seasonId,
       seasonName: row.seasonName,
       createdAt: row.createdAt,
