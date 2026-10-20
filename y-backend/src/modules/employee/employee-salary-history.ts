@@ -97,6 +97,28 @@ export async function upsertSalaryRevision(
   `);
 }
 
+async function syncCurrentSalaryFromLatestRevision(
+  db: SqlClient,
+  employeeId: bigint,
+) {
+  await db.$executeRaw(Prisma.sql`
+    UPDATE "employees"
+    SET "monthly_salary" = latest."monthly_salary"
+    FROM (
+      SELECT "monthly_salary"
+      FROM "employee_salary_revisions"
+      WHERE "employee_id" = ${employeeId}
+      ORDER BY "effective_date" DESC, "id" DESC
+      LIMIT 1
+    ) AS latest
+    WHERE "employees"."id" = ${employeeId}
+  `);
+}
+
+/**
+ * Keep salary history so a raise/cut starts on the chosen date.
+ * Months/days before that date keep the previous rate.
+ */
 export async function syncEmployeeSalaryHistory(
   db: SqlClient,
   employeeId: bigint,
@@ -133,9 +155,19 @@ export async function syncEmployeeSalaryHistory(
   const revisions = revisionsByEmployee.get(String(employeeId)) ?? [];
   const salaryChanged = !params.newSalary.equals(params.storedSalary);
   const earlier = params.earlierMonthlySalary ?? null;
-  const earlierDiffers = earlier != null && !earlier.equals(params.newSalary);
+  const joinRevision = revisions.find(
+    (revision) => revision.effectiveDate === joinDate,
+  );
+  const joinAmount = joinRevision?.monthlySalary ?? params.storedSalary;
+  const previousRate = earlier ?? params.storedSalary;
+  const needsHistoryCorrection =
+    earlier != null && !earlier.equals(joinAmount);
 
-  if (!salaryChanged && !earlierDiffers) {
+  if (!salaryChanged && !needsHistoryCorrection) {
+    if (revisions.length === 0) {
+      await upsertSalaryRevision(db, employeeId, joinDate, params.newSalary);
+      await syncCurrentSalaryFromLatestRevision(db, employeeId);
+    }
     return;
   }
 
@@ -149,32 +181,16 @@ export async function syncEmployeeSalaryHistory(
     );
   }
 
-  if (revisions.length <= 1 && earlierDiffers && earlier) {
-    await upsertSalaryRevision(db, employeeId, joinDate, earlier);
-    await upsertSalaryRevision(db, employeeId, appliesFrom, params.newSalary);
-  } else if (salaryChanged) {
-    if (revisions.length === 0) {
-      await upsertSalaryRevision(
-        db,
-        employeeId,
-        joinDate,
-        params.storedSalary,
-      );
-    }
-
-    await upsertSalaryRevision(db, employeeId, appliesFrom, params.newSalary);
+  // Raise/cut from hire day: only one rate exists.
+  if (appliesFrom === joinDate) {
+    await upsertSalaryRevision(db, employeeId, joinDate, params.newSalary);
+    await syncCurrentSalaryFromLatestRevision(db, employeeId);
+    return;
   }
 
-  await db.$executeRaw(Prisma.sql`
-    UPDATE "employees"
-    SET "monthly_salary" = latest."monthly_salary"
-    FROM (
-      SELECT "monthly_salary"
-      FROM "employee_salary_revisions"
-      WHERE "employee_id" = ${employeeId}
-      ORDER BY "effective_date" DESC, "id" DESC
-      LIMIT 1
-    ) AS latest
-    WHERE "employees"."id" = ${employeeId}
-  `);
+  // Keep the old rate from hire until the day before the change, then apply
+  // the new rate from the chosen date forward.
+  await upsertSalaryRevision(db, employeeId, joinDate, previousRate);
+  await upsertSalaryRevision(db, employeeId, appliesFrom, params.newSalary);
+  await syncCurrentSalaryFromLatestRevision(db, employeeId);
 }

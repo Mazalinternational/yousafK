@@ -980,6 +980,8 @@
     "salary_applies_from_hint": "The new salary starts on this date. Pay before this date stays at the earlier salary.",
     "earlier_monthly_salary": "Salary before this date",
     "earlier_monthly_salary_hint": "Used from the hire date until the day before the new salary starts. A raise does not change pay for earlier months.",
+    "salary_raise_preview": "From {{from}} onward salary is {{next}}. Before that date salary stays {{earlier}}.",
+    "salary_effective_before_hire": "Salary start date cannot be before the hire date.",
     "inactive": "Inactive",
     "salary_account": "Salary Account",
     "back_to_employees": "Back to Employees",

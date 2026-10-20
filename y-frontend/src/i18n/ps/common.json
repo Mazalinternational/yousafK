@@ -869,6 +869,8 @@
   "salary_applies_from_hint": "نوی معاش له دې نېټې پیل کیږي. له دې نېټې مخکې تادیه په پخواني معاش پاتې کیږي.",
   "earlier_monthly_salary": "له دې نېټې مخکې معاش",
   "earlier_monthly_salary_hint": "د ګمارنې له نېټې تر هغې ورځې چې نوی معاش پیل کیږي. د معاش زیاتوالی پخوانۍ میاشتې نه بدلوي.",
+  "salary_raise_preview": "له {{from}} وروسته معاش {{next}} دی. له دې نېټې مخکې معاش {{earlier}} پاتې کیږي.",
+  "salary_effective_before_hire": "د معاش پیل نېټه د ګمارنې نېټې نه مخکې کېدای شي.",
   "salary_account": "د معاش حساب",
   "back_to_employees": "کارمندانو ته بیرته",
   "add_salary_payment": "د معاش تادیه زیاته کړئ",

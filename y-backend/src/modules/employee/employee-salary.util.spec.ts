@@ -72,4 +72,18 @@ describe('calculatePayableForShamsiMonth salary revisions', () => {
 
     expect(partial.baseSalary.toFixed(2)).toBe(expected.toFixed(2));
   });
+
+  it('does not use the current salary for months before the first revision', () => {
+    const onlyRaiseRevision = calculatePayableForShamsiMonth(
+      new Prisma.Decimal(12000),
+      joinDate,
+      secondMonth,
+      new Prisma.Decimal(0),
+      endOfThirdMonth,
+      null,
+      [{ monthlySalary: '10000', effectiveDate: raiseDate }],
+    );
+
+    expect(onlyRaiseRevision.baseSalary.toFixed(2)).toBe('10000.00');
+  });
 });

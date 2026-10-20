@@ -4,8 +4,8 @@ import DynamicLocalSelect from "@/components/Fields/DynamicLocalSelect";
 import InputField from "@/components/Fields/InputField";
 import { Button } from "@/components/ui/button";
 import { Form } from "@/components/ui/form";
-import { useEffect, useMemo } from "react";
-import { type Resolver, useForm } from "react-hook-form";
+import { useEffect, useMemo, useRef } from "react";
+import { type Resolver, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import type { Season } from "../../seasons/schemas/season";
 import {
@@ -22,6 +22,10 @@ interface EmployeeFormProps {
   isSubmitting?: boolean;
 }
 
+function todayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export function EmployeeForm({
   activeSeason,
   defaultValues,
@@ -35,8 +39,8 @@ export function EmployeeForm({
     label: t(`common:${status}`),
   }));
   const generatedEmployeeNo = `${activeSeason?.code?.trim().toUpperCase() || "SEASON"}-EMP-*`;
-  const showSalaryHistory =
-    (defaultValues?.salaryRevisionCount ?? 1) <= 1;
+  const isEditing = Boolean(defaultValues);
+  const originalSalaryRef = useRef(defaultValues ? String(defaultValues.monthlySalary) : "");
 
   const form = useForm<EmployeeFormValues>({
     resolver: zodResolver(employeeFormSchema) as Resolver<EmployeeFormValues>,
@@ -46,11 +50,9 @@ export function EmployeeForm({
       position: defaultValues?.position || "",
       phoneNo: defaultValues?.phoneNo || "",
       address: defaultValues?.address || "",
-      joinDate: defaultValues?.joinDate?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+      joinDate: defaultValues?.joinDate?.slice(0, 10) || todayIsoDate(),
       monthlySalary: defaultValues?.monthlySalary || "",
-      salaryEffectiveDate: defaultValues
-        ? new Date().toISOString().slice(0, 10)
-        : "",
+      salaryEffectiveDate: defaultValues ? todayIsoDate() : "",
       earlierMonthlySalary: defaultValues ? String(defaultValues.monthlySalary) : "",
       status: defaultValues?.status || "active",
       notes: defaultValues?.notes || "",
@@ -58,26 +60,103 @@ export function EmployeeForm({
   });
 
   useEffect(() => {
+    originalSalaryRef.current = defaultValues ? String(defaultValues.monthlySalary) : "";
     form.reset({
       employeeNo: defaultValues?.employeeNo || generatedEmployeeNo,
       name: defaultValues?.name || "",
       position: defaultValues?.position || "",
       phoneNo: defaultValues?.phoneNo || "",
       address: defaultValues?.address || "",
-      joinDate: defaultValues?.joinDate?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+      joinDate: defaultValues?.joinDate?.slice(0, 10) || todayIsoDate(),
       monthlySalary: defaultValues?.monthlySalary || "",
-      salaryEffectiveDate: defaultValues
-        ? new Date().toISOString().slice(0, 10)
-        : "",
+      salaryEffectiveDate: defaultValues ? todayIsoDate() : "",
       earlierMonthlySalary: defaultValues ? String(defaultValues.monthlySalary) : "",
       status: defaultValues?.status || "active",
       notes: defaultValues?.notes || "",
     });
   }, [defaultValues, form, generatedEmployeeNo]);
 
+  const monthlySalary = useWatch({ control: form.control, name: "monthlySalary" });
+  const earlierMonthlySalary = useWatch({
+    control: form.control,
+    name: "earlierMonthlySalary",
+  });
+  const salaryChangedWhileEditing =
+    isEditing &&
+    String(monthlySalary ?? "").trim() !== "" &&
+    Number(monthlySalary) !== Number(originalSalaryRef.current);
+  const historyCorrectionWhileEditing =
+    isEditing &&
+    String(earlierMonthlySalary ?? "").trim() !== "" &&
+    Number(earlierMonthlySalary) !== Number(monthlySalary);
+
+  useEffect(() => {
+    if (!isEditing) {
+      return;
+    }
+
+    if (
+      (salaryChangedWhileEditing || historyCorrectionWhileEditing) &&
+      !form.getValues("salaryEffectiveDate")
+    ) {
+      form.setValue("salaryEffectiveDate", todayIsoDate(), {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    }
+  }, [
+    form,
+    historyCorrectionWhileEditing,
+    isEditing,
+    salaryChangedWhileEditing,
+  ]);
+
+  const handleSubmit = (values: EmployeeFormValues) => {
+    if (!isEditing) {
+      onSubmit(values);
+      return;
+    }
+
+    const originalSalary = originalSalaryRef.current;
+    const nextSalary = String(values.monthlySalary ?? "").trim();
+    const earlierSalary =
+      String(values.earlierMonthlySalary ?? "").trim() || originalSalary;
+    const salaryChanged = Number(nextSalary) !== Number(originalSalary);
+    const historyCorrection =
+      String(earlierSalary).trim() !== "" &&
+      Number(earlierSalary) !== Number(nextSalary);
+    const effectiveDate = String(values.salaryEffectiveDate ?? "").trim();
+    const joinDate = String(values.joinDate ?? "").slice(0, 10);
+    const needsEffectiveDate = salaryChanged || historyCorrection;
+
+    if (needsEffectiveDate && !effectiveDate) {
+      form.setError("salaryEffectiveDate", {
+        type: "manual",
+        message: t("common:employee_validation_required"),
+      });
+      return;
+    }
+
+    if (needsEffectiveDate && effectiveDate && joinDate && effectiveDate < joinDate) {
+      form.setError("salaryEffectiveDate", {
+        type: "manual",
+        message: t("common:salary_effective_before_hire"),
+      });
+      return;
+    }
+
+    onSubmit({
+      ...values,
+      earlierMonthlySalary: earlierSalary,
+      salaryEffectiveDate: needsEffectiveDate
+        ? effectiveDate || todayIsoDate()
+        : values.salaryEffectiveDate,
+    });
+  };
+
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
         <div className="rounded-lg border bg-muted/30 p-4">
           <p className="text-sm font-medium">{t("common:season")}</p>
           <p className="mt-1 text-base font-semibold">
@@ -151,31 +230,38 @@ export function EmployeeForm({
             characterRestriction="none"
           />
 
-          {defaultValues ? (
-            <DatePickerField
-              name="salaryEffectiveDate"
-              label={t("common:salary_applies_from")}
-              control={form.control}
-              required
-            />
-          ) : null}
+          {isEditing ? (
+            <>
+              <DatePickerField
+                name="salaryEffectiveDate"
+                label={t("common:salary_applies_from")}
+                control={form.control}
+                required={salaryChangedWhileEditing}
+              />
 
-          {defaultValues && showSalaryHistory ? (
-            <InputField
-              name="earlierMonthlySalary"
-              label={t("common:earlier_monthly_salary")}
-              placeholder={t("common:enter", { name: t("common:earlier_monthly_salary") })}
-              control={form.control}
-              type="number"
-              characterRestriction="none"
-            />
-          ) : null}
+              <InputField
+                name="earlierMonthlySalary"
+                label={t("common:earlier_monthly_salary")}
+                placeholder={t("common:enter", { name: t("common:earlier_monthly_salary") })}
+                control={form.control}
+                type="number"
+                characterRestriction="none"
+              />
 
-          {defaultValues ? (
-            <p className="text-xs text-muted-foreground md:col-span-2">
-              {t("common:salary_applies_from_hint")}{" "}
-              {showSalaryHistory ? t("common:earlier_monthly_salary_hint") : ""}
-            </p>
+              <p className="text-xs text-muted-foreground md:col-span-2">
+                {t("common:salary_applies_from_hint")} {t("common:earlier_monthly_salary_hint")}
+              </p>
+
+              {salaryChangedWhileEditing || historyCorrectionWhileEditing ? (
+                <div className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-xs text-sky-950 md:col-span-2 dark:border-sky-700 dark:bg-sky-950/40 dark:text-sky-100">
+                  {t("common:salary_raise_preview", {
+                    earlier: String(earlierMonthlySalary || originalSalaryRef.current),
+                    next: String(monthlySalary ?? ""),
+                    from: form.getValues("salaryEffectiveDate") || todayIsoDate(),
+                  })}
+                </div>
+              ) : null}
+            </>
           ) : null}
 
           <DynamicLocalSelect

@@ -45,7 +45,13 @@ function salaryRateOnDate(
   revisions: SalaryRevision[],
   fallback: Prisma.Decimal,
 ) {
-  let rate = fallback;
+  if (revisions.length === 0) {
+    return fallback;
+  }
+
+  // Days before the first recorded rate keep that first rate — never the
+  // current employee.monthly_salary, which would rewrite older months.
+  let rate = revisions[0].monthlySalary;
 
   for (const revision of revisions) {
     if (revision.effectiveDate <= dateKey) {
