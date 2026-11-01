@@ -2,8 +2,8 @@ import { useTheme } from "@/contexts/theme-provider";
 import type { StylesConfig, GroupBase } from "react-select";
 
 export function useSelectStyles(
-  fontSize: string = "0.875rem",
-  tagFontSize: string = "0.75rem",
+  fontSize: string = "0.75rem",
+  tagFontSize: string = "0.6875rem",
 ): StylesConfig<any, boolean, GroupBase<any>> {
   const { resolvedTheme: mode } = useTheme();
 
@@ -12,7 +12,8 @@ export function useSelectStyles(
       ...provided,
       width: "100%",
       cursor: "pointer",
-
+      minHeight: "32px",
+      height: "32px",
       fontSize,
       backgroundColor:
         mode === "light" ? "oklch(1 0 0)" : "oklch(0.21 0.006 285.885)",
@@ -21,12 +22,29 @@ export function useSelectStyles(
         : mode === "light"
           ? "oklch(0.92 0.004 286.32)"
           : "oklch(1 0 0 / 15%)",
-      borderRadius: "0.3rem",
-      padding: "2px",
+      borderRadius: "9999px",
+      padding: "0 2px",
       boxShadow: state.isFocused ? `0 0 0 1px #FEA317` : "none",
       "&:hover": {
         borderColor: "#FEA317",
       },
+    }),
+    valueContainer: (provided) => ({
+      ...provided,
+      padding: "0 8px",
+      height: "30px",
+    }),
+    indicatorsContainer: (provided) => ({
+      ...provided,
+      height: "30px",
+    }),
+    dropdownIndicator: (provided) => ({
+      ...provided,
+      padding: "4px",
+    }),
+    clearIndicator: (provided) => ({
+      ...provided,
+      padding: "4px",
     }),
 
     input: (provided) => ({
@@ -78,6 +96,7 @@ export function useSelectStyles(
 
     multiValue: (provided) => ({
       ...provided,
+      borderRadius: "9999px",
       backgroundColor:
         mode === "light"
           ? "oklch(0.967 0.001 286.375)"

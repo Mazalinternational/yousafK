@@ -51,3 +51,9 @@ temp/
 
 *.zip
 
+# SSH / deploy secrets (key is also embedded in deploy/vps_deploy.py for local use)
+*.ppk
+deploy/*.key
+deploy/*.pem
+deploy/vps_openssh.key
+

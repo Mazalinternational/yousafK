@@ -170,7 +170,7 @@ const formatSalaryEntryPayment = (
   t: (key: string) => string,
 ) => {
   if (entry.entryType !== "salary_payment" && entry.entryType !== "credit_repayment") {
-    return "â€”";
+    return "—";
   }
   if (entry.paymentChannel === "saraf") {
     const sarafName = entry.saraf?.name;
@@ -186,11 +186,11 @@ const formatSalaryEntryPayment = (
     if (currency) {
       bits.push(currency);
     }
-    return bits.join(" Â· ");
+    return bits.join(" · ");
   }
   const currency = entry.sarafLedgerCurrency?.code;
   return currency
-    ? `${t("common:pay_in_cash")} Â· ${currency}`
+    ? `${t("common:pay_in_cash")} · ${currency}`
     : t("common:pay_in_cash");
 };
 
@@ -228,7 +228,7 @@ const EmployeeSalaryLedgerPdfDocument = ({
   documentRtl: boolean;
   useArabicFont: boolean;
 }) => {
-  const documentTitle = `${account.employee.name} â€” ${labels.salaryLedger}`;
+  const documentTitle = `${account.employee.name} — ${labels.salaryLedger}`;
   const pageStyle = getPdfPageStyle({
     baseStyle: employeeLedgerPdfStyles.page,
     documentRtl,
@@ -338,7 +338,7 @@ const EmployeeSalaryLedgerPdfDocument = ({
             documentRtl={documentRtl}
             useArabicFont={useArabicFont}
           >
-            â€”
+            —
           </PdfText>
         ) : (
           entries.map((entry, index) => (
@@ -490,7 +490,7 @@ export function EmployeeAccountPage() {
     () =>
       (sarafsData?.items ?? []).map((s) => ({
         value: s.id,
-        label: `${s.name} â€” ${s.phoneNo}`,
+        label: `${s.name} — ${s.phoneNo}`,
       })),
     [sarafsData?.items],
   );
@@ -813,17 +813,17 @@ export function EmployeeAccountPage() {
     sectionEntries: t("common:ledger_entries"),
   };
 
-  const pdfDocumentTitle = `${data.employee.name} â€” ${pdfLabels.salaryLedger}`;
+  const pdfDocumentTitle = `${data.employee.name} — ${pdfLabels.salaryLedger}`;
 
   const pdfEntries: EmployeeSalaryLedgerPdfEntry[] = data.ledger.entries.map((entry) => ({
     id: entry.id,
     typeLabel: t(`common:${entry.entryType}`),
     salaryMonth:
-      entry.entryType === "credit_repayment" ? "â€”" : formatShamsiMonthLabel(entry.salaryMonth),
+      entry.entryType === "credit_repayment" ? "—" : formatShamsiMonthLabel(entry.salaryMonth),
     occurredAt: dateFormatter(entry.occurredAt),
     amount: formatDisplayAmount(entry.amount, locale),
     advanceLabel:
-      entry.entryType === "salary_payment" && entry.isAdvance ? t("common:salary_advance") : "â€”",
+      entry.entryType === "salary_payment" && entry.isAdvance ? t("common:salary_advance") : "—",
     paymentLabel: formatSalaryEntryPayment(entry, t),
     notes: entry.notes ?? null,
   }));
@@ -935,16 +935,16 @@ export function EmployeeAccountPage() {
             {canEdit ? (
               <>
                 <Button onClick={() => setSalaryDialogMode("payment")}>
-                  <PlusIcon className="me-2 h-4 w-4" />
+                  <PlusIcon className="h-3.5 w-3.5" />
                   {t("common:add_salary_payment")}
                 </Button>
                 <Button variant="outline" onClick={() => setSalaryDialogMode("deduction")}>
-                  <PlusIcon className="me-2 h-4 w-4" />
+                  <PlusIcon className="h-3.5 w-3.5" />
                   {t("common:add_salary_deduction")}
                 </Button>
                 {hasEmployeeCredit ? (
                   <Button variant="secondary" onClick={openCreditRepaymentDialog}>
-                    <PlusIcon className="me-2 h-4 w-4" />
+                    <PlusIcon className="h-3.5 w-3.5" />
                     {t("common:add_employee_credit_repayment")}
                   </Button>
                 ) : null}
@@ -1046,7 +1046,7 @@ export function EmployeeAccountPage() {
                         <TableCell>{t(`common:${entry.entryType}`)}</TableCell>
                         <TableCell>
                           {entry.entryType === "credit_repayment"
-                            ? "â€”"
+                            ? "—"
                             : formatShamsiMonthLabel(entry.salaryMonth)}
                         </TableCell>
                         <TableCell>{dateFormatter(entry.occurredAt)}</TableCell>
@@ -1060,10 +1060,10 @@ export function EmployeeAccountPage() {
                           {entry.entryType === "salary_payment" && entry.isAdvance ? (
                             <Badge variant="outline">{t("common:salary_advance")}</Badge>
                           ) : (
-                            "â€”"
+                            "—"
                           )}
                         </TableCell>
-                        <TableCell>{entry.notes || "â€”"}</TableCell>
+                        <TableCell>{entry.notes || "—"}</TableCell>
                         <TableCell className="text-end">
                           <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:justify-end">
                             {canEdit ? (

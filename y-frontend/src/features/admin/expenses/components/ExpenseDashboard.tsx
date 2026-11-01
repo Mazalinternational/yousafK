@@ -1,9 +1,21 @@
 import { motion } from "framer-motion";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import {
+  DashboardChartCard,
+  DashboardKpiCard,
+  DashboardSeasonBanner,
+} from "@/components/dashboard-ui";
 import { StatusIndicator } from "@/components/status-indicator";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  type ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
+import { Bar, BarChart, CartesianGrid, Cell, XAxis, YAxis } from "recharts";
 import {
   Table,
   TableBody,
@@ -65,76 +77,70 @@ export function ExpenseDashboard() {
         </motion.div>
 
         <motion.div variants={sectionVariants}>
-          {data.season ? (
-            <Card className="border-s-4 border-s-rose-500">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex flex-wrap items-center gap-3">
-                  <span>{data.season.name}</span>
-                  <Badge variant={data.season.status === "ACTIVE" ? "default" : "secondary"}>
-                    {t(`common:${data.season.status === "ACTIVE" ? "active" : "closed"}`)}
-                  </Badge>
-                </CardTitle>
-                <CardDescription>
-                  {t("common:current_season_range", {
-                    startDate: dateFormatter(data.season.startDate),
-                    endDate: data.season.endDate
-                      ? dateFormatter(data.season.endDate)
-                      : t("common:ongoing"),
-                  })}
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          ) : (
-            <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
-              {t("common:no_active_season_expense_dashboard_hint")}
-            </div>
-          )}
+          <DashboardSeasonBanner
+            season={data.season}
+            t={t}
+            accentClassName="border-l-rose-500"
+            emptyHint={
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+                {t("common:no_active_season_expense_dashboard_hint")}
+              </div>
+            }
+          />
         </motion.div>
 
-        <motion.div variants={sectionVariants}>
-          <h3 className="mb-3 text-sm font-medium text-muted-foreground">
-            {t("common:expense_by_currency_summary")}
-          </h3>
-          {data.currencyBreakdown.length === 0 ? (
-            <div className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
-              {t("common:no_data")}
-            </div>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {data.currencyBreakdown.map((item) => (
-                <Card key={item.currencyCode} className="border-s-4 border-s-rose-500">
-                  <CardHeader className="pb-2">
-                    <CardDescription>
-                      {item.currencyName} ({item.currencyCode})
-                    </CardDescription>
-                    <CardTitle className="text-2xl tabular-nums">
-                      {formatDisplayAmount(item.totalAmount, locale)}{" "}
-                      <span className="text-base font-semibold text-muted-foreground">
-                        {item.currencyCode}
-                      </span>
-                    </CardTitle>
-                    <CardDescription>
-                      {t("common:expense_currency_card_entries", {
-                        count: formatDisplayNumber(item.entryCount, locale),
-                      })}
-                    </CardDescription>
-                  </CardHeader>
-                </Card>
-              ))}
-            </div>
-          )}
-        </motion.div>
-
-        <motion.div variants={sectionVariants} className="grid gap-4 md:grid-cols-2">
+        <motion.div variants={sectionVariants} className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {countCards.map((card) => (
-            <Card key={card.key}>
-              <CardHeader className="pb-2">
-                <CardDescription>{card.label}</CardDescription>
-                <CardTitle className="text-2xl tabular-nums">{card.value}</CardTitle>
-              </CardHeader>
-            </Card>
+            <DashboardKpiCard key={card.key} label={card.label} value={card.value} />
+          ))}
+          {data.currencyBreakdown.map((item) => (
+            <DashboardKpiCard
+              key={item.currencyCode}
+              label={`${item.currencyName} (${item.currencyCode})`}
+              value={`${formatDisplayAmount(item.totalAmount, locale)} ${item.currencyCode}`}
+              hint={t("common:expense_currency_card_entries", {
+                count: Number(item.entryCount),
+              })}
+            />
           ))}
         </motion.div>
+
+        {data.currencyBreakdown.length > 0 ? (
+          <motion.div variants={sectionVariants}>
+            <DashboardChartCard title={t("common:expense_by_currency_summary")}>
+              {(() => {
+                const chartData = data.currencyBreakdown.map((item) => ({
+                  name: item.currencyCode,
+                  amount: Math.max(0, Number(item.totalAmount)),
+                }));
+                const colors = [
+                  "hsl(0 65% 52%)",
+                  "hsl(38 90% 48%)",
+                  "hsl(210 70% 48%)",
+                  "hsl(280 45% 52%)",
+                ];
+                const config = {
+                  amount: { label: t("common:amount"), color: "hsl(0 65% 52%)" },
+                } satisfies ChartConfig;
+                return (
+                  <ChartContainer config={config} className="aspect-auto h-[200px] w-full">
+                    <BarChart data={chartData} margin={{ left: 4, right: 8, top: 8, bottom: 0 }}>
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                      <XAxis dataKey="name" tickLine={false} axisLine={false} />
+                      <YAxis tickLine={false} axisLine={false} width={42} />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Bar dataKey="amount" radius={[4, 4, 0, 0]}>
+                        {chartData.map((row, index) => (
+                          <Cell key={row.name} fill={colors[index % colors.length]} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ChartContainer>
+                );
+              })()}
+            </DashboardChartCard>
+          </motion.div>
+        ) : null}
 
         <motion.div variants={sectionVariants} className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
           <Card>

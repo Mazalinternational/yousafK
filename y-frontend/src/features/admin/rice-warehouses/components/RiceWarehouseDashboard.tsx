@@ -3,15 +3,28 @@ import { Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SimpleTablePagination } from "@/components/simple-table-pagination";
+import {
+  DashboardChartCard,
+  DashboardKpiCard,
+  DashboardSeasonBanner,
+} from "@/components/dashboard-ui";
 import { StatusIndicator } from "@/components/status-indicator";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  type ChartConfig,
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
 import { Input } from "@/components/ui/input";
 import { sectionVariants, staggerContainerVariants } from "@/lib/motion";
 import { dateFormatter } from "@/utils/dataFormatters";
 import { formatWeightFromKg, stockValueClassName } from "@/utils/weightUnit";
 import { useRiceWarehouseDashboard } from "../hooks";
 import type { RiceDashboard } from "../schemas/rice-dashboard";
+import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from "recharts";
 
 function formatNumber(value: string | number, options?: Intl.NumberFormatOptions) {
   return new Intl.NumberFormat("en-US", {
@@ -150,114 +163,138 @@ export function RiceWarehouseDashboard() {
         </motion.div>
 
         <motion.div variants={sectionVariants}>
-          {data.season ? (
-            <Card className="border-s-4 border-s-sky-500">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-3">
-                  <span>{data.season.name}</span>
-                  <Badge variant={data.season.status === "ACTIVE" ? "default" : "secondary"}>
-                    {t(`common:${data.season.status === "ACTIVE" ? "active" : "closed"}`)}
-                  </Badge>
-                </CardTitle>
-                <CardDescription>
-                  {t("common:current_season_range", {
-                    startDate: dateFormatter(data.season.startDate),
-                    endDate: data.season.endDate
-                      ? dateFormatter(data.season.endDate)
-                      : t("common:ongoing"),
-                  })}
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          ) : (
-            <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              {t("common:no_active_season_rice_dashboard_hint")}
-            </div>
-          )}
+          <DashboardSeasonBanner
+            season={data.season}
+            t={t}
+            accentClassName="border-l-sky-500"
+            emptyHint={
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                {t("common:no_active_season_rice_dashboard_hint")}
+              </div>
+            }
+          />
         </motion.div>
 
-        <motion.div variants={sectionVariants} className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>{t("common:current_stock_balance")}</CardDescription>
-              <CardTitle className={`text-2xl ${stockValueClassName(bookStockKg) ?? ""}`}>
-                {fmtW(bookStockKg)}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>{t("common:rice_in")}</CardDescription>
-              <CardTitle className="text-2xl">{fmtW(data.summary.totalInKg)}</CardTitle>
-            </CardHeader>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>{t("common:rice_out")}</CardDescription>
-              <CardTitle className="text-2xl">{fmtW(data.summary.totalOutKg)}</CardTitle>
-            </CardHeader>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>{t("common:rice_dashboard_farmer_rice_to_issue")}</CardDescription>
-              <CardTitle className="text-2xl">
-                {fmtW(data.summary.totalFarmerRiceToIssueKg)}
-              </CardTitle>
-              <CardDescription className="pt-1 text-xs leading-snug">
-                {t("common:rice_dashboard_farmer_rice_to_issue_hint", {
-                  obligation: fmtW(data.summary.totalFarmerRiceObligationKg),
-                  returned: fmtW(data.summary.totalFarmerRiceReturnedKg),
-                })}
-              </CardDescription>
-            </CardHeader>
-          </Card>
+        <motion.div variants={sectionVariants} className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <DashboardKpiCard
+            label={t("common:current_stock_balance")}
+            value={fmtW(bookStockKg)}
+            valueClassName={stockValueClassName(bookStockKg) ?? undefined}
+          />
+          <DashboardKpiCard label={t("common:rice_in")} value={fmtW(data.summary.totalInKg)} />
+          <DashboardKpiCard label={t("common:rice_out")} value={fmtW(data.summary.totalOutKg)} />
+          <DashboardKpiCard
+            label={t("common:rice_dashboard_farmer_rice_to_issue")}
+            value={fmtW(data.summary.totalFarmerRiceToIssueKg)}
+            hint={t("common:rice_dashboard_farmer_rice_to_issue_hint", {
+              obligation: fmtW(data.summary.totalFarmerRiceObligationKg),
+              returned: fmtW(data.summary.totalFarmerRiceReturnedKg),
+            })}
+          />
+          <DashboardKpiCard
+            label={t("common:outstanding_amount")}
+            value={formatAmount(data.summary.combinedRemainingAmount)}
+            hint={t("common:rice_dashboard_outstanding_combined_hint")}
+          />
+          <DashboardKpiCard
+            label={t("common:rice_dashboard_charity_out")}
+            value={fmtW(data.summary.charityOutKg)}
+          />
+          <DashboardKpiCard
+            label={t("common:rice_dashboard_buyer_sales_total")}
+            value={formatAmount(data.summary.buyerSalesTotalAmount)}
+          />
+          <DashboardKpiCard
+            label={t("common:rice_dashboard_buyer_sales_remaining")}
+            value={formatAmount(data.summary.buyerSalesRemainingAmount)}
+          />
         </motion.div>
 
-        <motion.div variants={sectionVariants} className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>{t("common:outstanding_amount")}</CardDescription>
-              <CardTitle className="text-2xl">
-                {formatAmount(data.summary.combinedRemainingAmount)}
-              </CardTitle>
-              <CardDescription className="pt-1 text-xs leading-snug">
-                {t("common:rice_dashboard_outstanding_combined_hint")}
-              </CardDescription>
-            </CardHeader>
-          </Card>
-        </motion.div>
-
-        <motion.div variants={sectionVariants} className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>{t("common:rice_dashboard_charity_out")}</CardDescription>
-              <CardTitle className="text-2xl">{fmtW(data.summary.charityOutKg)}</CardTitle>
-            </CardHeader>
-          </Card>
-        </motion.div>
-
-        <motion.div variants={sectionVariants} className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>{t("common:rice_dashboard_buyer_sales_total")}</CardDescription>
-              <CardTitle className="text-xl">{formatAmount(data.summary.buyerSalesTotalAmount)}</CardTitle>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>{t("common:rice_dashboard_buyer_sales_paid")}</CardDescription>
-              <CardTitle className="text-xl">{formatAmount(data.summary.buyerSalesPaidAmount)}</CardTitle>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>{t("common:rice_dashboard_buyer_sales_remaining")}</CardDescription>
-              <CardTitle className="text-xl">{formatAmount(data.summary.buyerSalesRemainingAmount)}</CardTitle>
-            </CardHeader>
-          </Card>
+        <motion.div variants={sectionVariants} className="grid gap-3 lg:grid-cols-2">
+          <DashboardChartCard title={t("common:general_dashboard_chart_stock")}>
+            {(() => {
+              const stockData = [
+                {
+                  key: "riceIn",
+                  value: Math.max(0, Number(data.summary.totalInKg)),
+                  fill: "var(--color-riceIn)",
+                },
+                {
+                  key: "riceOut",
+                  value: Math.max(0, Number(data.summary.totalOutKg)),
+                  fill: "var(--color-riceOut)",
+                },
+                {
+                  key: "riceStock",
+                  value: Math.max(0, bookStockKg),
+                  fill: "var(--color-riceStock)",
+                },
+              ].filter((row) => row.value > 0);
+              const config = {
+                riceIn: { label: t("common:rice_in"), color: "hsl(152 55% 42%)" },
+                riceOut: { label: t("common:rice_out"), color: "hsl(0 65% 52%)" },
+                riceStock: {
+                  label: t("common:current_stock_balance"),
+                  color: "hsl(38 90% 48%)",
+                },
+              } satisfies ChartConfig;
+              if (!stockData.length) {
+                return (
+                  <p className="px-2 py-8 text-center text-xs text-muted-foreground">
+                    {t("common:general_dashboard_chart_no_data")}
+                  </p>
+                );
+              }
+              return (
+                <ChartContainer config={config} className="aspect-auto h-[200px] w-full">
+                  <PieChart>
+                    <ChartTooltip content={<ChartTooltipContent nameKey="key" hideLabel />} />
+                    <Pie
+                      data={stockData}
+                      dataKey="value"
+                      nameKey="key"
+                      innerRadius={48}
+                      outerRadius={72}
+                      paddingAngle={2}
+                    >
+                      {stockData.map((row) => (
+                        <Cell key={row.key} fill={row.fill} />
+                      ))}
+                    </Pie>
+                    <ChartLegend content={<ChartLegendContent nameKey="key" />} />
+                  </PieChart>
+                </ChartContainer>
+              );
+            })()}
+          </DashboardChartCard>
+          <DashboardChartCard title={t("common:rice_dashboard_buyer_sales_total")}>
+            {(() => {
+              const salesData = [
+                {
+                  name: t("common:rice_dashboard_buyer_sales_paid"),
+                  amount: Math.max(0, Number(data.summary.buyerSalesPaidAmount)),
+                },
+                {
+                  name: t("common:rice_dashboard_buyer_sales_remaining"),
+                  amount: Math.max(0, Number(data.summary.buyerSalesRemainingAmount)),
+                },
+              ];
+              const config = {
+                amount: { label: t("common:amount"), color: "hsl(210 70% 48%)" },
+              } satisfies ChartConfig;
+              return (
+                <ChartContainer config={config} className="aspect-auto h-[200px] w-full">
+                  <BarChart data={salesData} margin={{ left: 4, right: 8, top: 8, bottom: 0 }}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                    <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} />
+                    <YAxis tickLine={false} axisLine={false} width={40} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Bar dataKey="amount" fill="var(--color-amount)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ChartContainer>
+              );
+            })()}
+          </DashboardChartCard>
         </motion.div>
 
         <motion.div variants={sectionVariants}>

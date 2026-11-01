@@ -66,15 +66,16 @@ export function StoreVarietySalesSection({
   const { mutate: deleteSale } = useDeleteStoreVarietySale();
 
   const editAvailableWeightKg = useMemo(() => {
-    const baseKg = Number(
-      pooled ? (stockData?.varieties[0]?.availableWeightKg ?? 0) : 0,
-    );
+    const stockRow = pooled
+      ? stockData?.varieties[0]
+      : stockData?.varieties.find((row) => row.variety === editingSale?.variety);
+    const baseKg = Number(stockRow?.availableWeightKg ?? 0);
     const currentSaleKg = Number(
       editingSale?.fromStockWeightKg ?? editingSale?.soldWeightKg ?? 0,
     );
 
     if (!editingSale || Number.isNaN(baseKg) || Number.isNaN(currentSaleKg)) {
-      return pooled ? (stockData?.varieties[0]?.availableWeightKg ?? "0") : "0";
+      return stockRow?.availableWeightKg ?? "0";
     }
 
     return (baseKg + currentSaleKg).toFixed(2);
@@ -132,10 +133,10 @@ export function StoreVarietySalesSection({
 
   const columns = useDataTableColumns<StoreVarietySale>({
     customColumns: getStoreVarietySaleColumns(t, { hideVariety: pooled, locale }),
-    onEdit: pooled && canWrite ? (sale) => setEditingSale(sale) : undefined,
-    onDelete: pooled && canWrite ? (sale) => deleteSale(sale.id) : undefined,
-    editVisible: () => pooled && canWrite,
-    deleteVisible: () => pooled && canWrite,
+    onEdit: canWrite ? (sale) => setEditingSale(sale) : undefined,
+    onDelete: canWrite ? (sale) => deleteSale(sale.id) : undefined,
+    editVisible: () => Boolean(canWrite),
+    deleteVisible: () => Boolean(canWrite),
     customActions: [
       {
         label: t("common:print"),

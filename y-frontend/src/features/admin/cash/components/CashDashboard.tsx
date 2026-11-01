@@ -3,9 +3,22 @@ import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { LedgerPdfRowActions } from "@/components/LedgerPdfRowActions";
+import {
+  DashboardChartCard,
+  DashboardKpiCard,
+  DashboardSeasonBanner,
+} from "@/components/dashboard-ui";
 import { StatusIndicator } from "@/components/status-indicator";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  type ChartConfig,
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import {
   Table,
   TableBody,
@@ -100,44 +113,53 @@ export function CashDashboard() {
           <p className="text-sm text-muted-foreground">{t("common:cash_dashboard_description")}</p>
         </motion.div>
 
-        {data.season ? (
-          <motion.div variants={sectionVariants}>
-            <Card className="border-s-4 border-s-emerald-500">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex flex-wrap items-center gap-3">
-                  <span>{data.season.name}</span>
-                  <Badge variant={data.season.status === "ACTIVE" ? "default" : "secondary"}>
-                    {t(`common:${data.season.status === "ACTIVE" ? "active" : "closed"}`)}
-                  </Badge>
-                </CardTitle>
-                <CardDescription>
-                  {t("common:current_season_range", {
-                    startDate: dateFormatter(data.season.startDate),
-                    endDate: data.season.endDate
-                      ? dateFormatter(data.season.endDate)
-                      : t("common:ongoing"),
-                  })}
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          </motion.div>
-        ) : (
-          <motion.div
-            variants={sectionVariants}
-            className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100"
-          >
-            {t("common:no_active_season_cash_dashboard_hint")}
-          </motion.div>
-        )}
-
         <motion.div variants={sectionVariants}>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>{t("common:transactionCount")}</CardDescription>
-              <CardTitle className="text-2xl tabular-nums">{transactionCount}</CardTitle>
-            </CardHeader>
-          </Card>
+          <DashboardSeasonBanner
+            season={data.season}
+            t={t}
+            accentClassName="border-l-emerald-500"
+            emptyHint={
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+                {t("common:no_active_season_cash_dashboard_hint")}
+              </div>
+            }
+          />
         </motion.div>
+
+        <motion.div variants={sectionVariants} className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <DashboardKpiCard label={t("common:transactionCount")} value={transactionCount} />
+        </motion.div>
+
+        {activeCurrencyBalances.length > 0 ? (
+          <motion.div variants={sectionVariants}>
+            <DashboardChartCard title={t("common:general_dashboard_chart_cash")}>
+              {(() => {
+                const chartData = activeCurrencyBalances.map((item) => ({
+                  currency: item.currencyCode,
+                  cashIn: Math.max(0, Number(item.cashIn)),
+                  cashOut: Math.max(0, Number(item.cashOut)),
+                }));
+                const config = {
+                  cashIn: { label: t("common:totalCashIn"), color: "hsl(152 55% 40%)" },
+                  cashOut: { label: t("common:totalCashOut"), color: "hsl(0 65% 50%)" },
+                } satisfies ChartConfig;
+                return (
+                  <ChartContainer config={config} className="aspect-auto h-[200px] w-full">
+                    <BarChart data={chartData} margin={{ left: 4, right: 4, top: 8, bottom: 0 }}>
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                      <XAxis dataKey="currency" tickLine={false} axisLine={false} />
+                      <YAxis tickLine={false} axisLine={false} width={42} />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <ChartLegend content={<ChartLegendContent />} />
+                      <Bar dataKey="cashIn" fill="var(--color-cashIn)" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="cashOut" fill="var(--color-cashOut)" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ChartContainer>
+                );
+              })()}
+            </DashboardChartCard>
+          </motion.div>
+        ) : null}
 
         <motion.div variants={sectionVariants}>
           <h3 className="mb-3 text-sm font-medium">{t("common:cash_summary_by_currency")}</h3>
@@ -195,36 +217,14 @@ export function CashDashboard() {
         </motion.div>
 
         {activeCurrencyBalances.length > 0 ? (
-          <motion.div variants={sectionVariants} className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <motion.div variants={sectionVariants} className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {activeCurrencyBalances.map((item) => (
-              <Card key={item.currencyId} className="border-s-4 border-s-emerald-500">
-                <CardHeader className="pb-2">
-                  <CardDescription>
-                    {formatCurrencyTitle(item.currencyCode, item.currencyName, t)}
-                  </CardDescription>
-                  <CardTitle className="text-xl">{t("common:cash_available_balance")}</CardTitle>
-                  <p className="text-2xl font-bold tracking-tight tabular-nums">
-                    {formatDisplayAmount(item.availableCash ?? item.balance, locale)}{" "}
-                    <span className="text-base font-semibold text-muted-foreground">
-                      {item.currencyCode}
-                    </span>
-                  </p>
-                </CardHeader>
-                <CardContent className="grid gap-2 text-sm">
-                  <div className="flex items-center justify-between gap-3 rounded-md bg-emerald-50 px-3 py-2 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
-                    <span>{t("common:totalCashIn")}</span>
-                    <span className="font-medium tabular-nums">
-                      {formatDisplayAmount(item.cashIn, locale)} {item.currencyCode}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 rounded-md bg-red-50 px-3 py-2 text-red-900 dark:bg-red-950/40 dark:text-red-100">
-                    <span>{t("common:totalCashOut")}</span>
-                    <span className="font-medium tabular-nums">
-                      {formatDisplayAmount(item.cashOut, locale)} {item.currencyCode}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
+              <DashboardKpiCard
+                key={item.currencyId}
+                label={formatCurrencyTitle(item.currencyCode, item.currencyName, t)}
+                value={`${formatDisplayAmount(item.availableCash ?? item.balance, locale)} ${item.currencyCode}`}
+                hint={`${t("common:totalCashIn")}: ${formatDisplayAmount(item.cashIn, locale)} · ${t("common:totalCashOut")}: ${formatDisplayAmount(item.cashOut, locale)}`}
+              />
             ))}
           </motion.div>
         ) : null}

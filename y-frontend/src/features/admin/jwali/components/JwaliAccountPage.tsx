@@ -84,11 +84,11 @@ const formatJwaliPayment = (payment: JwaliPayment, t: (key: string) => string) =
     if (currencyCode) {
       bits.push(currencyCode);
     }
-    return bits.join(" Â· ");
+    return bits.join(" · ");
   }
 
   return currencyCode
-    ? `${t("common:jwali_paid_by_cash")} Â· ${currencyCode}`
+    ? `${t("common:jwali_paid_by_cash")} · ${currencyCode}`
     : t("common:jwali_paid_by_cash");
 };
 
@@ -158,7 +158,7 @@ export function JwaliAccountPage() {
     () =>
       (sarafsData?.items ?? []).map((s) => ({
         value: s.id,
-        label: `${s.name} â€” ${s.phoneNo}`,
+        label: `${s.name} — ${s.phoneNo}`,
       })),
     [sarafsData?.items],
   );
@@ -368,11 +368,11 @@ export function JwaliAccountPage() {
             {canEdit ? (
               <>
                 <Button onClick={() => setEntryDialogOpen(true)}>
-                  <PlusIcon className="me-2 h-4 w-4" />
+                  <PlusIcon className="h-3.5 w-3.5" />
                   {t("common:add_jwali_entry")}
                 </Button>
                 <Button variant="outline" onClick={() => setPaymentDialogOpen(true)}>
-                  <PlusIcon className="me-2 h-4 w-4" />
+                  <PlusIcon className="h-3.5 w-3.5" />
                   {t("common:add_jwali_payment")}
                 </Button>
               </>
@@ -505,9 +505,9 @@ export function JwaliAccountPage() {
                         <TableCell>
                           {entry.currency?.code
                             ? formatCurrencyTitle(entry.currency.code, entry.currency.name, t)
-                            : "â€”"}
+                            : "—"}
                         </TableCell>
-                        <TableCell>{entry.notes || "â€”"}</TableCell>
+                        <TableCell>{entry.notes || "—"}</TableCell>
                         <TableCell className="text-end">
                           <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:justify-end">
                             {canEdit ? (
@@ -597,12 +597,12 @@ export function JwaliAccountPage() {
                         <TableCell>
                           {payment.currency?.code
                             ? formatCurrencyTitle(payment.currency.code, payment.currency.name, t)
-                            : "â€”"}
+                            : "—"}
                         </TableCell>
                         <TableCell className="text-sm">
                           {formatJwaliPayment(payment, t)}
                         </TableCell>
-                        <TableCell>{payment.notes || "â€”"}</TableCell>
+                        <TableCell>{payment.notes || "—"}</TableCell>
                         <TableCell className="text-end">
                           <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:justify-end">
                             {canEdit ? (

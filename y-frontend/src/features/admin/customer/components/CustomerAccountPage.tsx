@@ -238,7 +238,7 @@ const formatLedgerPayment = (
     );
   }
 
-  return bits.length ? bits.join(" · ") : "—";
+  return bits.length ? bits.join(" ? ") : "?";
 };
 
 export function CustomerAccountPage() {
@@ -434,12 +434,12 @@ export function CustomerAccountPage() {
 
   const sarafOptions = (sarafsData?.items ?? []).map((s) => ({
     value: s.id,
-    label: `${s.name} — ${s.phoneNo}`,
+    label: `${s.name} ? ${s.phoneNo}`,
   }));
 
   const currencyOptions = (currenciesData?.items ?? []).map((c) => ({
     value: c.id,
-    label: `${c.code} — ${c.name}`,
+    label: `${c.code} ? ${c.name}`,
   }));
 
   useEffect(() => {
@@ -1162,7 +1162,7 @@ export function CustomerAccountPage() {
             </Button>
             {canEdit && (isSeller || isReceivableBuyer || isVendor) ? (
               <Button onClick={() => setIsPaymentDialogOpen(true)}>
-                <PlusIcon className="me-2 h-4 w-4" />
+                <PlusIcon className="h-3.5 w-3.5" />
                 {t("common:customer_add_payment")}
               </Button>
             ) : null}
@@ -1174,7 +1174,7 @@ export function CustomerAccountPage() {
                   setIsTransferDialogOpen(true);
                 }}
               >
-                <PlusIcon className="me-2 h-4 w-4" />
+                <PlusIcon className="h-3.5 w-3.5" />
                 {t("common:buyer_transfer_balance")}
               </Button>
             ) : null}
@@ -1187,7 +1187,7 @@ export function CustomerAccountPage() {
                   setIsAdjustmentDialogOpen(true);
                 }}
               >
-                <PlusIcon className="me-2 h-4 w-4" />
+                <PlusIcon className="h-3.5 w-3.5" />
                 {t("common:buyer_debit_credit")}
               </Button>
             ) : null}
@@ -1199,7 +1199,7 @@ export function CustomerAccountPage() {
                   setIsSellerTransferDialogOpen(true);
                 }}
               >
-                <PlusIcon className="me-2 h-4 w-4" />
+                <PlusIcon className="h-3.5 w-3.5" />
                 {t("common:seller_transfer_balance")}
               </Button>
             ) : null}
@@ -1212,7 +1212,7 @@ export function CustomerAccountPage() {
                   setIsAdjustmentDialogOpen(true);
                 }}
               >
-                <PlusIcon className="me-2 h-4 w-4" />
+                <PlusIcon className="h-3.5 w-3.5" />
                 {t("common:seller_debit_credit")}
               </Button>
             ) : null}
@@ -1224,7 +1224,7 @@ export function CustomerAccountPage() {
                     setIsPaymentDialogOpen(true);
                   }}
                 >
-                  <PlusIcon className="me-2 h-4 w-4" />
+                  <PlusIcon className="h-3.5 w-3.5" />
                   {t("common:customer_add_disbursement")}
                 </Button>
                 <Button
@@ -1234,7 +1234,7 @@ export function CustomerAccountPage() {
                     setIsPaymentDialogOpen(true);
                   }}
                 >
-                  <PlusIcon className="me-2 h-4 w-4" />
+                  <PlusIcon className="h-3.5 w-3.5" />
                   {t("common:customer_add_repayment")}
                 </Button>
               </>
@@ -1244,7 +1244,7 @@ export function CustomerAccountPage() {
                 onClick={() => setIsRiceReturnDialogOpen(true)}
                 disabled={eligibleReturnVarietyOptions.length === 0}
               >
-                <PlusIcon className="mr-2 h-4 w-4" />
+                <PlusIcon className="h-3.5 w-3.5" />
                 {t("common:farmer_rice_return_add")}
               </Button>
             ) : null}
@@ -2285,8 +2285,8 @@ export function CustomerAccountPage() {
                                 : getCustomerLedgerEntryLabel(entry, t)}
                         </TableCell>
                         <TableCell>{dateFormatter(entry.occurredAt)}</TableCell>
-                        <TableCell>{entry.billNo ?? "—"}</TableCell>
-                        <TableCell>{entry.amount ? numberFormatter(entry.amount) : "—"}</TableCell>
+                        <TableCell>{entry.billNo ?? "?"}</TableCell>
+                        <TableCell>{entry.amount ? numberFormatter(entry.amount) : "?"}</TableCell>
                         {isCurrencyBalanceSeller || isBuyer || isVendor || isDebtor ? (
                           <TableCell>
                             {entry.currencyCode ? (
@@ -2299,7 +2299,7 @@ export function CustomerAccountPage() {
                                 ) : null}
                               </span>
                             ) : (
-                              "—"
+                              "?"
                             )}
                           </TableCell>
                         ) : null}
@@ -2309,7 +2309,7 @@ export function CustomerAccountPage() {
                           </TableCell>
                         ) : null}
                         {isPaddyLedgerCustomer ? (
-                          <TableCell>{entry.paddyVariety || "—"}</TableCell>
+                          <TableCell>{entry.paddyVariety || "?"}</TableCell>
                         ) : null}
                         <TableCell>
                           {entry.paddyQuantity
@@ -2318,7 +2318,7 @@ export function CustomerAccountPage() {
                                 entry.unit ?? undefined,
                                 t,
                               )
-                            : "—"}
+                            : "?"}
                         </TableCell>
                         <TableCell>
                           {entry.riceQuantity
@@ -2354,7 +2354,7 @@ export function CustomerAccountPage() {
                                 </span>
                               )
                             ) : (
-                              "—"
+                              "?"
                             )}
                           </TableCell>
                         ) : null}

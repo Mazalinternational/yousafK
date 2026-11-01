@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { CalendarCog, LayoutDashboard } from "lucide-react";
 
 import { NavAdmin } from "@/components/nav-admin";
@@ -25,6 +25,8 @@ import { SeasonScopeSwitcher } from "@/features/admin/seasons/components/SeasonS
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { t, i18n } = useTranslation();
   const isRTL = i18n.language === "dr" || i18n.language === "ps";
+  /** Shared accordion across Operations/Finance/… and Administration. */
+  const [openClusterKey, setOpenClusterKey] = useState<string | null>(null);
 
   useEffect(() => {
     document.documentElement.lang = i18n.language;
@@ -80,9 +82,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SeasonScopeSwitcher />
         </div>
         <SidebarSeparator />
-        <NavDocuments />
+        <NavDocuments
+          openClusterKey={openClusterKey}
+          onOpenClusterChange={setOpenClusterKey}
+        />
         <SidebarSeparator />
-        <NavAdmin />
+        <NavAdmin
+          openClusterKey={openClusterKey}
+          onOpenClusterChange={setOpenClusterKey}
+        />
         <NavSecondary items={[]} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>

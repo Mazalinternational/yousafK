@@ -85,7 +85,7 @@ export function CashTransactionList() {
       const fileName = cashTransactionPdfFileName(transaction);
       const directionLabel =
         transaction.direction === "in" ? t("common:cash_in") : t("common:cash_out");
-      const shareTitle = `${directionLabel} â€” ${formatDisplayAmount(transaction.amount, locale)} ${transaction.currencyCode}`;
+      const shareTitle = `${directionLabel} — ${formatDisplayAmount(transaction.amount, locale)} ${transaction.currencyCode}`;
 
       await runLedgerPdfAction(
         action,
@@ -166,7 +166,7 @@ export function CashTransactionList() {
             className="hover:cursor-pointer"
             disabled={!canCreate || isLoadingActiveSeason}
           >
-            <PlusIcon className="me-2 h-4 w-4" />
+            <PlusIcon className="h-3.5 w-3.5" />
             {t("common:add", { name: t("admin:cash_transaction") })}
           </Button>
         </div>

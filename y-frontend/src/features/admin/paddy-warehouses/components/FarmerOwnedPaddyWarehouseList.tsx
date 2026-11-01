@@ -116,7 +116,7 @@ export function FarmerOwnedPaddyWarehouseList() {
             className="hover:cursor-pointer"
             disabled={!canCreate || isLoadingActiveSeason}
           >
-            <PlusIcon className="mr-2 h-4 w-4" />
+            <PlusIcon className="h-3.5 w-3.5" />
             {t("common:add", { name: t("admin:farmer_owned_paddy_warehouse") })}
           </Button>
         </div>

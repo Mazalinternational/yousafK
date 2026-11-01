@@ -135,7 +135,7 @@ export function EnteringPaddyList() {
             className="hover:cursor-pointer"
             disabled={!canManageEnteringPaddy || isLoadingActiveSeason || isLoadingCustomers}
           >
-            <PlusIcon className="mr-2 h-4 w-4" />
+            <PlusIcon className="h-3.5 w-3.5" />
             {t("common:add", { name: t("admin:entering_paddy") })}
           </Button>
         </div>

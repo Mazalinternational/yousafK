@@ -65,7 +65,7 @@ export function SarafiAccountPage() {
     () =>
       (currenciesPage?.items ?? []).map((c) => ({
         value: c.id,
-        label: `${c.code} â€” ${c.name}`,
+        label: `${c.code} — ${c.name}`,
       })),
     [currenciesPage?.items],
   );
@@ -164,7 +164,7 @@ export function SarafiAccountPage() {
               <h2 className="text-lg font-bold">{data.saraf.name}</h2>
               <p className="text-sm text-muted-foreground">
                 {data.saraf.phoneNo}
-                <span className="mx-2">Â·</span>
+                <span className="mx-2">·</span>
                 {data.saraf.address}
               </p>
             </div>
@@ -172,7 +172,7 @@ export function SarafiAccountPage() {
 
           {canEdit ? (
             <Button onClick={() => setEntryDialogOpen(true)}>
-              <PlusIcon className="mr-2 h-4 w-4" />
+              <PlusIcon className="h-3.5 w-3.5" />
               {t("common:add_sarafi_cash_entry")}
             </Button>
           ) : null}
@@ -333,7 +333,7 @@ export function SarafiAccountPage() {
                           <td className="px-3 py-3 text-muted-foreground">
                             {getSarafEntryLinkedBill(entry, t)}
                           </td>
-                          <td className="px-3 py-3">{entry.notes || "â€”"}</td>
+                          <td className="px-3 py-3">{entry.notes || "—"}</td>
                           <td className="px-3 py-3 text-right">
                             <LedgerPdfRowActions
                               rowKey={entry.id}

@@ -34,7 +34,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 
@@ -82,9 +82,6 @@ type SidebarCluster = {
 };
 
 // URLs whose backend module differs from the parent section's module.
-// Example: /yk/process-rice lives under the Rice Warehouse section in the
-// UI, but is enforced by the `process_rice` module on the backend, so it
-// should be hidden independently if the user lacks process_rice perms.
 const CHILD_URL_MODULE: Record<string, RbacModule> = {
   "/yk/process-rice": "process_rice",
   "/yk/rice-sales": "rice_sales",
@@ -97,78 +94,43 @@ const CHILD_URL_MODULE: Record<string, RbacModule> = {
   "/yk/cash": "cash",
 };
 
-export function NavDocuments() {
+type NavDocumentsProps = {
+  openClusterKey: string | null;
+  onOpenClusterChange: (key: string | null) => void;
+};
+
+export function NavDocuments({
+  openClusterKey,
+  onOpenClusterChange,
+}: NavDocumentsProps) {
   const { pathname } = useLocation();
   const { t } = useTranslation();
   const { can, status } = useAuth();
 
+  /** Accordion: only one menu category open; null = all collapsed by default. */
+  const [openMenuUrl, setOpenMenuUrl] = useState<string | null>(null);
+
   const allSections = useMemo<SidebarSection[]>(() => {
     if (!pathname.startsWith("/yk/")) return [];
     return [
-      {
-        module: "seasons",
-        items: getSeasonMenus(t),
-      },
-      {
-        module: "varieties",
-        items: getVerietyMenus(t),
-      },
-      {
-        module: "customers",
-        items: getCustomerMenus(t),
-      },
-      {
-        module: "entering_paddy",
-        items: getEnteringPaddyMenus(t),
-      },
-      {
-        module: "paddy_warehouses",
-        items: getPaddyWarehouseMenus(t),
-      },
-      {
-        module: "paddy_processes",
-        items: getPaddyProcessMenus(t),
-      },
-      {
-        module: "rice_warehouses",
-        items: getRiceWarehouseMenus(t),
-      },
-      {
-        module: "stores",
-        items: getStoreMenus(t),
-      },
-      {
-        module: "expenses",
-        items: getExpenseMenus(t),
-      },
-      {
-        module: "cash",
-        items: getCashMenus(t),
-      },
-      {
-        module: "employees",
-        items: getEmployeeMenus(t),
-      },
-      {
-        module: "investors",
-        items: getInvestorMenus(t),
-      },
-      {
-        module: "jwali",
-        items: getJwaliMenus(t),
-      },
-      {
-        module: "sarafi",
-        items: getSarafiMenus(t),
-      },
-      {
-        module: "reports",
-        items: getReportMenus(t),
-      },
+      { module: "seasons", items: getSeasonMenus(t) },
+      { module: "varieties", items: getVerietyMenus(t) },
+      { module: "customers", items: getCustomerMenus(t) },
+      { module: "entering_paddy", items: getEnteringPaddyMenus(t) },
+      { module: "paddy_warehouses", items: getPaddyWarehouseMenus(t) },
+      { module: "paddy_processes", items: getPaddyProcessMenus(t) },
+      { module: "rice_warehouses", items: getRiceWarehouseMenus(t) },
+      { module: "stores", items: getStoreMenus(t) },
+      { module: "expenses", items: getExpenseMenus(t) },
+      { module: "cash", items: getCashMenus(t) },
+      { module: "employees", items: getEmployeeMenus(t) },
+      { module: "investors", items: getInvestorMenus(t) },
+      { module: "jwali", items: getJwaliMenus(t) },
+      { module: "sarafi", items: getSarafiMenus(t) },
+      { module: "reports", items: getReportMenus(t) },
     ];
   }, [pathname, t]);
 
-  // True iff the user can READ (or VIEW or MANAGE) anything in `mod`.
   const canSeeModule = useMemo(
     () => (mod: RbacModule) =>
       can(`${mod}.read`) || can(`${mod}.view`) || can(`${mod}.manage`),
@@ -189,7 +151,6 @@ export function NavDocuments() {
         const filteredItems = sec.items
           .map((item) => {
             if (!item.children?.length) return item;
-            // Each child may belong to a different module (e.g. process-rice).
             const visibleChildren = item.children.filter((child) => {
               const childModule = CHILD_URL_MODULE[child.url];
               const requiredModule = childModule ?? sec.module;
@@ -197,9 +158,7 @@ export function NavDocuments() {
             });
             return { ...item, children: visibleChildren };
           })
-          .filter(
-            (item) => !item.children || item.children.length > 0,
-          );
+          .filter((item) => !item.children || item.children.length > 0);
         return { ...sec, items: filteredItems };
       })
       .filter((sec) => sec.items.length > 0);
@@ -254,28 +213,6 @@ export function NavDocuments() {
       .filter((cluster) => cluster.items.length > 0);
   }, [clusters, sections]);
 
-  const activeTopLevelMenu = useMemo(() => {
-    for (const { items } of groupedSections) {
-      const activeItem = items.find((item) =>
-        item.children?.some((child) => pathname.startsWith(child.url)),
-      );
-
-      if (activeItem) {
-        return activeItem.url;
-      }
-    }
-
-    return null;
-  }, [groupedSections, pathname]);
-
-  const [openMenuUrl, setOpenMenuUrl] = useState<string | null>(
-    activeTopLevelMenu,
-  );
-
-  useEffect(() => {
-    setOpenMenuUrl(activeTopLevelMenu);
-  }, [activeTopLevelMenu]);
-
   if (groupedSections.length === 0) return null;
 
   return (
@@ -295,96 +232,104 @@ export function NavDocuments() {
         </SidebarGroupContent>
       </SidebarGroup>
 
-      {groupedSections.map((cluster) => (
-        <SidebarGroup
-          key={cluster.key}
-          className="px-2 py-1 group-data-[collapsible=icon]:hidden"
-        >
-          <SidebarGroupLabel>{cluster.label}</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {cluster.items.map((item) => {
-                const isExactActive = pathname === item.url;
-                const hasActiveChild = item.children?.some((child) =>
-                  pathname.startsWith(child.url),
-                );
+      {groupedSections.map((cluster) => {
+        const clusterHasActive = cluster.items.some(
+          (item) =>
+            pathname === item.url ||
+            item.children?.some((child) => pathname.startsWith(child.url)),
+        );
 
-                if (!item.children?.length) {
-                  return (
-                    <SidebarMenuItem key={item.url}>
-                      <SidebarMenuButton asChild isActive={isExactActive}>
-                        <NavLink
-                          to={item.url}
-                          className="flex items-center gap-2"
+        return (
+          <Collapsible
+            key={cluster.key}
+            open={openClusterKey === cluster.key}
+            onOpenChange={(open) => {
+              onOpenClusterChange(open ? cluster.key : null);
+              if (!open) setOpenMenuUrl(null);
+            }}
+            className="group/cluster"
+          >
+            <SidebarGroup className="px-2 py-1 group-data-[collapsible=icon]:hidden">
+              <SidebarGroupLabel asChild className="p-0">
+                <CollapsibleTrigger className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 data-[state=open]:bg-sidebar-accent/50 data-[state=open]:text-sidebar-accent-foreground">
+                  <span className="truncate">{cluster.label}</span>
+                  {clusterHasActive ? (
+                    <span className="size-1.5 shrink-0 rounded-full bg-sidebar-primary" aria-hidden />
+                  ) : null}
+                  <ChevronRight className="ms-auto size-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]/cluster:rotate-90" />
+                </CollapsibleTrigger>
+              </SidebarGroupLabel>
+              <CollapsibleContent className="motion-safe:will-change-[height,opacity]">
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {cluster.items.map((item) => {
+                      const isExactActive = pathname === item.url;
+                      const hasActiveChild = item.children?.some((child) =>
+                        pathname.startsWith(child.url),
+                      );
+
+                      if (!item.children?.length) {
+                        return (
+                          <SidebarMenuItem key={item.url}>
+                            <SidebarMenuButton asChild isActive={isExactActive}>
+                              <NavLink to={item.url} className="flex items-center gap-2">
+                                <item.icon className="h-4 w-4" />
+                                <span>{item.name}</span>
+                              </NavLink>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        );
+                      }
+
+                      return (
+                        <Collapsible
+                          key={item.url}
+                          asChild
+                          open={openMenuUrl === item.url}
+                          onOpenChange={(open) => {
+                            setOpenMenuUrl(open ? item.url : null);
+                          }}
+                          className="group/collapsible"
                         >
-                          <item.icon className="h-4 w-4" />
-                          <span>{item.name}</span>
-                        </NavLink>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                }
-
-                if (item.children.length === 1) {
-                  const onlyChild = item.children[0];
-                  return (
-                    <SidebarMenuItem key={item.url}>
-                      <SidebarMenuButton asChild isActive={pathname.startsWith(onlyChild.url)}>
-                        <NavLink to={onlyChild.url} className="flex items-center gap-2">
-                          <item.icon className="h-4 w-4" />
-                          <span>{item.name}</span>
-                        </NavLink>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                }
-
-                return (
-                  <Collapsible
-                    key={item.url}
-                    asChild
-                    open={openMenuUrl === item.url}
-                    onOpenChange={(open) => {
-                      setOpenMenuUrl(open ? item.url : null);
-                    }}
-                    className="group/collapsible"
-                  >
-                    <SidebarMenuItem>
-                      <CollapsibleTrigger asChild>
-                        <SidebarMenuButton
-                          tooltip={item.name}
-                          isActive={Boolean(hasActiveChild)}
-                          className="cursor-pointer"
-                        >
-                          <item.icon className="h-4 w-4" />
-                          <span>{item.name}</span>
-                          <ChevronRight className="ms-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                        </SidebarMenuButton>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="motion-safe:will-change-[height,opacity]">
-                        <SidebarMenuSub>
-                          {item.children.map((child) => (
-                            <SidebarMenuSubItem key={child.url}>
-                              <SidebarMenuSubButton
-                                asChild
-                                isActive={pathname === child.url}
+                          <SidebarMenuItem>
+                            <CollapsibleTrigger asChild>
+                              <SidebarMenuButton
+                                tooltip={item.name}
+                                isActive={Boolean(hasActiveChild || isExactActive)}
+                                className="cursor-pointer"
                               >
-                                <NavLink to={child.url}>
-                                  <span>{child.name}</span>
-                                </NavLink>
-                              </SidebarMenuSubButton>
-                            </SidebarMenuSubItem>
-                          ))}
-                        </SidebarMenuSub>
-                      </CollapsibleContent>
-                    </SidebarMenuItem>
-                  </Collapsible>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      ))}
+                                <item.icon className="h-4 w-4" />
+                                <span>{item.name}</span>
+                                <ChevronRight className="ms-auto size-3.5 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                              </SidebarMenuButton>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="motion-safe:will-change-[height,opacity]">
+                              <SidebarMenuSub>
+                                {item.children.map((child) => (
+                                  <SidebarMenuSubItem key={child.url}>
+                                    <SidebarMenuSubButton
+                                      asChild
+                                      isActive={pathname === child.url || pathname.startsWith(`${child.url}/`)}
+                                    >
+                                      <NavLink to={child.url}>
+                                        <span>{child.name}</span>
+                                      </NavLink>
+                                    </SidebarMenuSubButton>
+                                  </SidebarMenuSubItem>
+                                ))}
+                              </SidebarMenuSub>
+                            </CollapsibleContent>
+                          </SidebarMenuItem>
+                        </Collapsible>
+                      );
+                    })}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </CollapsibleContent>
+            </SidebarGroup>
+          </Collapsible>
+        );
+      })}
     </>
   );
 }

@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
+import { DashboardKpiCard, DashboardSeasonBanner } from "@/components/dashboard-ui";
 import { StatusIndicator } from "@/components/status-indicator";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -89,40 +90,21 @@ export function EmployeeDashboard() {
         </motion.div>
 
         <motion.div variants={sectionVariants}>
-          {data.season ? (
-            <Card className="border-s-4 border-s-cyan-500">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex flex-wrap items-center gap-3">
-                  <span>{data.season.name}</span>
-                  <Badge variant={data.season.status === "ACTIVE" ? "default" : "secondary"}>
-                    {t(`common:${data.season.status === "ACTIVE" ? "active" : "closed"}`)}
-                  </Badge>
-                </CardTitle>
-                <CardDescription>
-                  {t("common:current_season_range", {
-                    startDate: dateFormatter(data.season.startDate),
-                    endDate: data.season.endDate
-                      ? dateFormatter(data.season.endDate)
-                      : t("common:ongoing"),
-                  })}
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          ) : (
-            <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
-              {t("common:no_active_season_employee_dashboard_hint")}
-            </div>
-          )}
+          <DashboardSeasonBanner
+            season={data.season}
+            t={t}
+            accentClassName="border-l-cyan-500"
+            emptyHint={
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+                {t("common:no_active_season_employee_dashboard_hint")}
+              </div>
+            }
+          />
         </motion.div>
 
-        <motion.div variants={sectionVariants} className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <motion.div variants={sectionVariants} className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {overviewCards.map((card) => (
-            <Card key={card.key}>
-              <CardHeader className="pb-2">
-                <CardDescription>{card.label}</CardDescription>
-                <CardTitle className="text-2xl tabular-nums">{card.value}</CardTitle>
-              </CardHeader>
-            </Card>
+            <DashboardKpiCard key={card.key} label={card.label} value={card.value} />
           ))}
         </motion.div>
 

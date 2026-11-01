@@ -3,14 +3,27 @@ import { Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SimpleTablePagination } from "@/components/simple-table-pagination";
+import {
+  DashboardChartCard,
+  DashboardKpiCard,
+  DashboardSeasonBanner,
+} from "@/components/dashboard-ui";
 import { StatusIndicator } from "@/components/status-indicator";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  type ChartConfig,
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
 import { Input } from "@/components/ui/input";
 import { sectionVariants, staggerContainerVariants } from "@/lib/motion";
 import { dateFormatter } from "@/utils/dataFormatters";
 import { formatAvailableStockFromKg, formatWeightFromKg } from "@/utils/weightUnit";
 import { usePaddyWarehouseDashboard } from "../hooks";
+import { Cell, Pie, PieChart } from "recharts";
 
 function formatNumber(value: string | number, options?: Intl.NumberFormatOptions) {
   return new Intl.NumberFormat("en-US", {
@@ -137,30 +150,16 @@ export function PaddyWarehouseDashboard() {
         </motion.div>
 
         <motion.div variants={sectionVariants}>
-          {data.season ? (
-            <Card className="border-s-4 border-s-emerald-500">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-3">
-                  <span>{data.season.name}</span>
-                  <Badge variant={data.season.status === "ACTIVE" ? "default" : "secondary"}>
-                    {t(`common:${data.season.status === "ACTIVE" ? "active" : "closed"}`)}
-                  </Badge>
-                </CardTitle>
-                <CardDescription>
-                  {t("common:current_season_range", {
-                    startDate: dateFormatter(data.season.startDate),
-                    endDate: data.season.endDate
-                      ? dateFormatter(data.season.endDate)
-                      : t("common:ongoing"),
-                  })}
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          ) : (
-            <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              {t("common:no_active_season_dashboard_hint")}
-            </div>
-          )}
+          <DashboardSeasonBanner
+            season={data.season}
+            t={t}
+            accentClassName="border-l-emerald-500"
+            emptyHint={
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                {t("common:no_active_season_dashboard_hint")}
+              </div>
+            }
+          />
         </motion.div>
 
         <motion.div variants={sectionVariants}>
@@ -214,45 +213,82 @@ export function PaddyWarehouseDashboard() {
           </Card>
         </motion.div>
 
-        <motion.div variants={sectionVariants} className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>{t("common:available_paddy_stock")}</CardDescription>
-              <CardTitle className="text-2xl">
-                {fmtStock(
-                  Number(data.companyOwned.availableQuantityKg) +
-                    Number(data.farmerOwned.availableQuantityKg),
-                )}
-              </CardTitle>
-            </CardHeader>
-          </Card>
+        <motion.div variants={sectionVariants} className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <DashboardKpiCard
+            label={t("common:available_paddy_stock")}
+            value={fmtStock(
+              Number(data.companyOwned.availableQuantityKg) +
+                Number(data.farmerOwned.availableQuantityKg),
+            )}
+          />
+          <DashboardKpiCard
+            label={t("common:processed_paddy")}
+            value={fmtW(data.companyOwned.processedQuantityKg)}
+          />
+          <DashboardKpiCard
+            label={t("common:outstanding_amount")}
+            value={formatAmount(data.companyOwned.remainingAmount)}
+          />
+          <DashboardKpiCard
+            label={t("common:exchange_balance")}
+            value={fmtW(data.farmerOwned.exchangeBalanceKg)}
+          />
+        </motion.div>
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>{t("common:processed_paddy")}</CardDescription>
-              <CardTitle className="text-2xl">
-                {fmtW(data.companyOwned.processedQuantityKg)}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>{t("common:outstanding_amount")}</CardDescription>
-              <CardTitle className="text-2xl">
-                {formatAmount(data.companyOwned.remainingAmount)}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>{t("common:exchange_balance")}</CardDescription>
-              <CardTitle className="text-2xl">
-                {fmtW(data.farmerOwned.exchangeBalanceKg)}
-              </CardTitle>
-            </CardHeader>
-          </Card>
+        <motion.div variants={sectionVariants}>
+          <DashboardChartCard title={t("common:general_dashboard_chart_stock")}>
+            {(() => {
+              const stockData = [
+                {
+                  key: "company",
+                  value: Math.max(0, Number(data.companyOwned.availableQuantityKg)),
+                  fill: "var(--color-company)",
+                },
+                {
+                  key: "farmer",
+                  value: Math.max(0, Number(data.farmerOwned.availableQuantityKg)),
+                  fill: "var(--color-farmer)",
+                },
+                {
+                  key: "processed",
+                  value: Math.max(0, Number(data.companyOwned.processedQuantityKg)),
+                  fill: "var(--color-processed)",
+                },
+              ].filter((row) => row.value > 0);
+              const config = {
+                company: { label: t("common:company_owned"), color: "hsl(152 55% 42%)" },
+                farmer: { label: t("common:farmer_owned"), color: "hsl(38 90% 48%)" },
+                processed: { label: t("common:processed_paddy"), color: "hsl(210 70% 48%)" },
+              } satisfies ChartConfig;
+              if (!stockData.length) {
+                return (
+                  <p className="px-2 py-8 text-center text-xs text-muted-foreground">
+                    {t("common:general_dashboard_chart_no_data")}
+                  </p>
+                );
+              }
+              return (
+                <ChartContainer config={config} className="aspect-auto h-[200px] w-full">
+                  <PieChart>
+                    <ChartTooltip content={<ChartTooltipContent nameKey="key" hideLabel />} />
+                    <Pie
+                      data={stockData}
+                      dataKey="value"
+                      nameKey="key"
+                      innerRadius={48}
+                      outerRadius={72}
+                      paddingAngle={2}
+                    >
+                      {stockData.map((row) => (
+                        <Cell key={row.key} fill={row.fill} />
+                      ))}
+                    </Pie>
+                    <ChartLegend content={<ChartLegendContent nameKey="key" />} />
+                  </PieChart>
+                </ChartContainer>
+              );
+            })()}
+          </DashboardChartCard>
         </motion.div>
 
         <motion.div variants={sectionVariants} className="grid gap-4 xl:grid-cols-2">

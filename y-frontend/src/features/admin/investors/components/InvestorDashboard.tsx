@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { DashboardKpiCard, DashboardSeasonBanner } from "@/components/dashboard-ui";
 import { StatusIndicator } from "@/components/status-indicator";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,7 +14,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { sectionVariants, staggerContainerVariants } from "@/lib/motion";
-import { dateFormatter } from "@/utils/dataFormatters";
 import {
   formatDisplayAmount,
   formatDisplayNumber,
@@ -70,84 +70,45 @@ export function InvestorDashboard() {
         </motion.div>
 
         <motion.div variants={sectionVariants}>
-          {data.season ? (
-            <Card className="border-s-4 border-s-emerald-500">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex flex-wrap items-center gap-3">
-                  <span>{data.season.name}</span>
-                  <Badge variant={data.season.status === "ACTIVE" ? "default" : "secondary"}>
-                    {t(`common:${data.season.status === "ACTIVE" ? "active" : "closed"}`)}
-                  </Badge>
-                </CardTitle>
-                <CardDescription>
-                  {t("common:current_season_range", {
-                    startDate: dateFormatter(data.season.startDate),
-                    endDate: data.season.endDate
-                      ? dateFormatter(data.season.endDate)
-                      : t("common:ongoing"),
-                  })}
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          ) : (
-            <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
-              {t("common:no_active_season_investor_dashboard_hint")}
-            </div>
-          )}
+          <DashboardSeasonBanner
+            season={data.season}
+            t={t}
+            accentClassName="border-l-emerald-500"
+            emptyHint={
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+                {t("common:no_active_season_investor_dashboard_hint")}
+              </div>
+            }
+          />
         </motion.div>
 
-        <motion.div variants={sectionVariants} className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <motion.div variants={sectionVariants} className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
           {overviewCards.map((card) => (
-            <Card key={card.key}>
-              <CardHeader className="pb-2">
-                <CardDescription>{card.label}</CardDescription>
-                <CardTitle className="text-2xl tabular-nums">{card.value}</CardTitle>
-              </CardHeader>
-            </Card>
+            <DashboardKpiCard key={card.key} label={card.label} value={card.value} />
           ))}
         </motion.div>
 
-        <motion.div variants={sectionVariants} className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>{t("common:total_sales")}</CardDescription>
-              <CardTitle className="text-xl tabular-nums">
-                {formatDisplayAmount(data.totals.totalSales, locale)}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>{t("common:total_expenses")}</CardDescription>
-              <CardTitle className="text-xl tabular-nums">
-                {formatDisplayAmount(data.totals.totalExpenses, locale)}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>{t("common:total_purchases")}</CardDescription>
-              <CardTitle className="text-xl tabular-nums">
-                {formatDisplayAmount(data.totals.totalPurchases, locale)}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>{t("common:net_profit")}</CardDescription>
-              <CardTitle className="text-xl tabular-nums">
-                {formatDisplayAmount(data.totals.netProfit, locale)}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>{t("common:distributable_profit")}</CardDescription>
-              <CardTitle className="text-xl tabular-nums">
-                {formatDisplayAmount(data.totals.distributableProfit, locale)}
-              </CardTitle>
-            </CardHeader>
-          </Card>
+        <motion.div variants={sectionVariants} className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+          <DashboardKpiCard
+            label={t("common:total_sales")}
+            value={formatDisplayAmount(data.totals.totalSales, locale)}
+          />
+          <DashboardKpiCard
+            label={t("common:total_expenses")}
+            value={formatDisplayAmount(data.totals.totalExpenses, locale)}
+          />
+          <DashboardKpiCard
+            label={t("common:total_purchases")}
+            value={formatDisplayAmount(data.totals.totalPurchases, locale)}
+          />
+          <DashboardKpiCard
+            label={t("common:net_profit")}
+            value={formatDisplayAmount(data.totals.netProfit, locale)}
+          />
+          <DashboardKpiCard
+            label={t("common:distributable_profit")}
+            value={formatDisplayAmount(data.totals.distributableProfit, locale)}
+          />
         </motion.div>
 
         <motion.div variants={sectionVariants}>

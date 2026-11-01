@@ -13,8 +13,23 @@ import axios, {
  * headers (X-CSRF-Token) and prefer that over document.cookie.
  */
 
-export const baseURL: string =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:3005";
+/** Absolute API origin, or "/" for same-origin (must be root-absolute so /yk/* pages work). */
+function resolveApiBaseUrl(): string {
+  const raw = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+  // Keep a lone "/" — stripping it to "" makes axios resolve "seasons" under /yk/*.
+  if (!raw || raw === "/") {
+    return import.meta.env.PROD || raw === "/" ? "/" : "http://localhost:3005";
+  }
+  return raw.replace(/\/$/, "");
+}
+
+export const baseURL: string = resolveApiBaseUrl();
+
+function absoluteApiUrl(path: string): string {
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  if (!baseURL || baseURL === "/") return normalized;
+  return `${baseURL}${normalized}`;
+}
 
 const CSRF_COOKIE = "yk_csrf_token";
 const CSRF_HEADER = "X-CSRF-Token";
@@ -210,7 +225,7 @@ async function performRefresh(): Promise<boolean> {
   if (refreshInFlight) return refreshInFlight;
   refreshInFlight = (async () => {
     try {
-      const res = await axios.post(`${baseURL}/auth/refresh`, undefined, {
+      const res = await axios.post(absoluteApiUrl("/auth/refresh"), undefined, {
         withCredentials: true,
       });
       captureCsrfFromResponse(res);

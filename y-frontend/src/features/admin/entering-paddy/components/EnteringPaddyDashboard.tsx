@@ -1,9 +1,18 @@
 import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
+import { Cell, Pie, PieChart } from "recharts";
+import { DashboardChartCard, DashboardKpiCard, DashboardSeasonBanner } from "@/components/dashboard-ui";
 import { StatusIndicator } from "@/components/status-indicator";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  type ChartConfig,
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
 import { sectionVariants, staggerContainerVariants } from "@/lib/motion";
 import { dateFormatter } from "@/utils/dataFormatters";
 import { formatWeightFromKg } from "@/utils/weightUnit";
@@ -66,61 +75,92 @@ export function EnteringPaddyDashboard() {
           </p>
         </motion.div>
 
-        {data.season ? (
-          <motion.div variants={sectionVariants}>
-            <Card className="border-l-4 border-l-emerald-500">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-3">
-                <span>{data.season.name}</span>
-                <Badge variant={data.season.status === "ACTIVE" ? "default" : "secondary"}>
-                  {t(`common:${data.season.status === "ACTIVE" ? "active" : "closed"}`)}
-                </Badge>
-              </CardTitle>
-              <CardDescription>
-                {t("common:current_season_range", {
-                  startDate: dateFormatter(data.season.startDate),
-                  endDate: data.season.endDate
-                    ? dateFormatter(data.season.endDate)
-                    : t("common:ongoing"),
-                })}
-              </CardDescription>
-            </CardHeader>
-          </Card>
-          </motion.div>
-        ) : (
-          <motion.div
-            variants={sectionVariants}
-            className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
-          >
-            {t("common:no_active_season_entering_paddy_dashboard_hint")}
-          </motion.div>
-        )}
+        <motion.div variants={sectionVariants}>
+          <DashboardSeasonBanner
+            season={data.season}
+            t={t}
+            accentClassName="border-l-emerald-500"
+            emptyHint={
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                {t("common:no_active_season_entering_paddy_dashboard_hint")}
+              </div>
+            }
+          />
+        </motion.div>
 
-        <motion.div variants={sectionVariants} className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <motion.div variants={sectionVariants} className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {overviewCards.map((card) => (
-            <Card key={card.key}>
-              <CardHeader className="pb-2">
-                <CardDescription>{card.label}</CardDescription>
-                <CardTitle className="text-2xl">{card.value}</CardTitle>
-              </CardHeader>
-            </Card>
+            <DashboardKpiCard key={card.key} label={card.label} value={card.value} />
           ))}
         </motion.div>
 
-        <motion.div variants={sectionVariants}>
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("common:received_from_summary")}</CardTitle>
-              <CardDescription>{t("common:received_from_summary_description")}</CardDescription>
+        <motion.div variants={sectionVariants} className="grid gap-3 lg:grid-cols-2">
+          <DashboardChartCard title={t("common:received_from_summary")}>
+            {(() => {
+              const sourceData = [
+                {
+                  key: "farmer",
+                  value: Number(data.sourceSummary.farmerCount),
+                  fill: "var(--color-farmer)",
+                },
+                {
+                  key: "seller",
+                  value: Number(data.sourceSummary.sellerCount),
+                  fill: "var(--color-seller)",
+                },
+              ].filter((row) => row.value > 0);
+              const config = {
+                farmer: { label: t("common:farmer"), color: "hsl(152 55% 42%)" },
+                seller: { label: t("common:seller"), color: "hsl(38 90% 48%)" },
+              } satisfies ChartConfig;
+              if (sourceData.length === 0) {
+                return (
+                  <p className="px-2 py-8 text-center text-xs text-muted-foreground">
+                    {t("common:general_dashboard_chart_no_data")}
+                  </p>
+                );
+              }
+              return (
+                <ChartContainer config={config} className="aspect-auto h-[200px] w-full">
+                  <PieChart>
+                    <ChartTooltip content={<ChartTooltipContent nameKey="key" hideLabel />} />
+                    <Pie
+                      data={sourceData}
+                      dataKey="value"
+                      nameKey="key"
+                      innerRadius={48}
+                      outerRadius={72}
+                      paddingAngle={2}
+                    >
+                      {sourceData.map((row) => (
+                        <Cell key={row.key} fill={row.fill} />
+                      ))}
+                    </Pie>
+                    <ChartLegend content={<ChartLegendContent nameKey="key" />} />
+                  </PieChart>
+                </ChartContainer>
+              );
+            })()}
+          </DashboardChartCard>
+          <Card className="py-0 shadow-none">
+            <CardHeader className="gap-0.5 px-4 pb-0 pt-3">
+              <CardTitle className="text-sm">{t("common:received_from_summary")}</CardTitle>
+              <CardDescription className="text-xs">
+                {t("common:received_from_summary_description")}
+              </CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-lg border p-4">
-                <p className="text-sm text-muted-foreground">{t("common:farmer")}</p>
-                <p className="mt-1 text-2xl font-semibold">{data.sourceSummary.farmerCount}</p>
+            <CardContent className="grid gap-2 px-3 py-3 sm:grid-cols-2">
+              <div className="rounded-md border px-3 py-2">
+                <p className="text-[11px] text-muted-foreground">{t("common:farmer")}</p>
+                <p className="mt-1 text-lg font-semibold tabular-nums leading-tight">
+                  {data.sourceSummary.farmerCount}
+                </p>
               </div>
-              <div className="rounded-lg border p-4">
-                <p className="text-sm text-muted-foreground">{t("common:seller")}</p>
-                <p className="mt-1 text-2xl font-semibold">{data.sourceSummary.sellerCount}</p>
+              <div className="rounded-md border px-3 py-2">
+                <p className="text-[11px] text-muted-foreground">{t("common:seller")}</p>
+                <p className="mt-1 text-lg font-semibold tabular-nums leading-tight">
+                  {data.sourceSummary.sellerCount}
+                </p>
               </div>
             </CardContent>
           </Card>

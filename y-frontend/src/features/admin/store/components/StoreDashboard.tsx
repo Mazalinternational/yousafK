@@ -1,9 +1,20 @@
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import {
+  DashboardChartCard,
+  DashboardKpiCard,
+  DashboardSeasonBanner,
+} from "@/components/dashboard-ui";
 import { StatusIndicator } from "@/components/status-indicator";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  type ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
+import { Bar, BarChart, CartesianGrid, Cell, XAxis, YAxis } from "recharts";
 import {
   Table,
   TableBody,
@@ -13,7 +24,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { sectionVariants, staggerContainerVariants } from "@/lib/motion";
-import { dateFormatter } from "@/utils/dataFormatters";
 import { formatDisplayNumber, getDisplayLocale } from "@/utils/displayLocale";
 import {
   formatQuantityWithUnit,
@@ -63,54 +73,66 @@ export function StoreDashboard() {
         </motion.div>
 
         <motion.div variants={sectionVariants}>
-          {data.season ? (
-            <Card className="border-s-4 border-s-emerald-500">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex flex-wrap items-center gap-3">
-                  <span>{data.season.name}</span>
-                  <Badge variant={data.season.status === "ACTIVE" ? "default" : "secondary"}>
-                    {t(`common:${data.season.status === "ACTIVE" ? "active" : "closed"}`)}
-                  </Badge>
-                </CardTitle>
-                <CardDescription>
-                  {t("common:current_season_range", {
-                    startDate: dateFormatter(data.season.startDate),
-                    endDate: data.season.endDate
-                      ? dateFormatter(data.season.endDate)
-                      : t("common:ongoing"),
-                  })}
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          ) : (
-            <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
-              {t("common:no_active_season_store_hint")}
-            </div>
-          )}
+          <DashboardSeasonBanner
+            season={data.season}
+            t={t}
+            accentClassName="border-l-emerald-500"
+            emptyHint={
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+                {t("common:no_active_season_store_hint")}
+              </div>
+            }
+          />
         </motion.div>
 
-        <motion.div variants={sectionVariants} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <motion.div variants={sectionVariants} className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {data.overview.map((item) => (
             <Link key={item.storeType} to={STORE_PATHS[item.storeType as StoreType]}>
-              <Card className="h-full transition-colors hover:bg-muted/30">
-                <CardHeader className="pb-2">
-                  <CardDescription>{t(`common:${item.storeType}`)}</CardDescription>
-                  <CardTitle
-                    className={`text-base tabular-nums ${stockValueClassName(item.remainingWeightKg ?? item.totalWeightKg) ?? ""}`}
-                  >
-                    {formatWeightFromKg(item.remainingWeightKg ?? item.totalWeightKg, t)}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  {t("common:store_stock_total")}: {formatWeightFromKg(item.totalWeightKg, t)}
-                  <br />
-                  {t("common:store_entries_count", {
-                    count: formatDisplayNumber(item.entryCount, locale),
-                  })}
-                </CardContent>
-              </Card>
+              <DashboardKpiCard
+                label={t(`common:${item.storeType}`)}
+                value={formatWeightFromKg(item.remainingWeightKg ?? item.totalWeightKg, t)}
+                valueClassName={
+                  stockValueClassName(item.remainingWeightKg ?? item.totalWeightKg) ?? undefined
+                }
+                hint={`${t("common:store_stock_total")}: ${formatWeightFromKg(item.totalWeightKg, t)} · ${t("common:store_entries_count", { count: Number(item.entryCount) })}`}
+              />
             </Link>
           ))}
+        </motion.div>
+
+        <motion.div variants={sectionVariants}>
+          <DashboardChartCard title={t("common:general_dashboard_chart_stock")}>
+            {(() => {
+              const chartData = data.overview.map((item) => ({
+                name: t(`common:${item.storeType}`),
+                stock: Math.max(0, Number(item.remainingWeightKg ?? item.totalWeightKg)),
+              }));
+              const colors = [
+                "hsl(152 55% 42%)",
+                "hsl(38 90% 48%)",
+                "hsl(210 70% 48%)",
+                "hsl(0 65% 52%)",
+              ];
+              const config = {
+                stock: { label: t("common:current_stock_balance"), color: "hsl(152 55% 42%)" },
+              } satisfies ChartConfig;
+              return (
+                <ChartContainer config={config} className="aspect-auto h-[200px] w-full">
+                  <BarChart data={chartData} margin={{ left: 4, right: 8, top: 8, bottom: 0 }}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                    <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} />
+                    <YAxis tickLine={false} axisLine={false} width={40} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Bar dataKey="stock" radius={[4, 4, 0, 0]}>
+                      {chartData.map((row, index) => (
+                        <Cell key={row.name} fill={colors[index % colors.length]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ChartContainer>
+              );
+            })()}
+          </DashboardChartCard>
         </motion.div>
 
         <motion.div variants={sectionVariants} className="grid gap-4 lg:grid-cols-2">

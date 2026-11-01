@@ -247,12 +247,12 @@ export function DataTable<TData, TValue>({
         <div className="flex gap-4">
           <div>
             {onSearch && (
-              <div className="flex items-center relative">
-                <Search className="absolute start-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4 rtl:rotate-90" />
+              <div className="relative flex items-center">
+                <Search className="pointer-events-none absolute start-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground rtl:rotate-90" />
                 <Input
                   placeholder={searchPlaceholder ?? t("common:search")}
                   onChange={(event) => onSearch(event.target.value)}
-                  className=" ps-10 bg-background/80 w-[200px]"
+                  className="w-[180px] bg-background/80 ps-8"
                 />
               </div>
             )}
@@ -260,7 +260,7 @@ export function DataTable<TData, TValue>({
           {filterTrigger}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline">
+              <Button variant="outline" size="icon-sm">
                 <Columns3 />
               </Button>
             </DropdownMenuTrigger>

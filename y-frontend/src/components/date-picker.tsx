@@ -200,14 +200,14 @@ export default function DatePickerComponent({
   };
 
   const dateInputClasses = cn(
-    "h-10 w-full rounded-md px-3 py-1 text-base ",
+    "h-8 w-full rounded-full px-3 py-1 text-xs",
     "border border-input",
     "bg-transparent text-foreground dark:bg-input/30 dark:text-foreground",
     "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50",
     "placeholder:text-muted-foreground",
     "aria-invalid:border-destructive aria-invalid:ring-destructive/20",
     "disabled:pointer-events-none disabled:opacity-50",
-    "md:text-sm",
+    "md:text-xs",
     "outline-none",
     inputClassName,
   );

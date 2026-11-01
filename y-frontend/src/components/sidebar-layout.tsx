@@ -12,7 +12,7 @@ export function SidebarLayout() {
       <SidebarInset className="h-svh min-h-0 flex-1 overflow-hidden">
         <SiteHeader />
         <Toaster />
-        <motion.div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain">
+        <motion.div className="main-scroll flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain">
           <Outlet />
         </motion.div>
       </SidebarInset>
