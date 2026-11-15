@@ -53,6 +53,7 @@ export function EnteringPaddyForm({
       label: `${customer.name} (${customer.phoneNo}) - ${t(`common:${customer.type}`)}`,
       type: customer.type,
     }));
+  const hasEligibleCustomers = customerOptions.length > 0;
 
   const formSchema = useMemo(() => createEnteringPaddyFormSchema(t), [t]);
 
@@ -137,7 +138,13 @@ export function EnteringPaddyForm({
             required
             options={customerOptions}
             placeholder={t("common:select", { name: t("common:customer") })}
+            disabled={!hasEligibleCustomers}
           />
+          {!hasEligibleCustomers ? (
+            <p className="text-sm text-muted-foreground md:col-span-2">
+              {t("common:no_customer_entering_paddy_hint")}
+            </p>
+          ) : null}
 
           <DynamicLocalSelect
             name="variety"
@@ -224,7 +231,7 @@ export function EnteringPaddyForm({
             type="submit"
             disabled={
               isSubmitting ||
-              ((!activeSeason && !defaultValues) || customerOptions.length === 0) ||
+              ((!activeSeason && !defaultValues) || !hasEligibleCustomers) ||
               varietiesLoading ||
               noPaddyVarieties
             }

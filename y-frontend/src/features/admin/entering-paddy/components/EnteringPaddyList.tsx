@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { PlusIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useQueryClient } from "@tanstack/react-query";
 import { DataTable } from "@/components/data-table";
 import { StatusIndicator } from "@/components/status-indicator";
 import { Button } from "@/components/ui/button";
@@ -11,8 +12,8 @@ import { useSeasonWriteAccess } from "../../seasons/hooks/useSeasonWriteAccess";
 import { useCreateEnteringPaddy } from "../hooks/useCreateEnteringPaddy";
 import { useDeleteEnteringPaddy } from "../hooks/useDeleteEnteringPaddy";
 import { useEnteringPaddies } from "../hooks/useEnteringPaddies";
+import { useEnteringPaddyCustomers } from "../hooks/useEnteringPaddyCustomers";
 import { useUpdateEnteringPaddy } from "../hooks/useUpdateEnteringPaddy";
-import { useCustomers } from "../../customer/hooks/useCustomers";
 import type {
   EnteringPaddy,
   EnteringPaddyFormValues,
@@ -22,6 +23,7 @@ import { EnteringPaddyForm } from "./EnteringPaddyForm";
 
 export function EnteringPaddyList() {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingEnteringPaddy, setEditingEnteringPaddy] =
     useState<EnteringPaddy | null>(null);
@@ -43,22 +45,18 @@ export function EnteringPaddyList() {
     activeSeason,
     isLoadingActiveSeason,
     canCreate,
-    selectedSeasonId,
   } = useSeasonWriteAccess();
-  const { data: customersData, isLoading: isLoadingCustomers } = useCustomers({
-    pageNumber: 1,
-    pageSize: 1000,
-    seasonId: selectedSeasonId ?? undefined,
-    sortBy: "name",
-    sortByAction: "asc",
-  });
+  const {
+    customers,
+    isLoading: isLoadingCustomers,
+    refetch: refetchCustomers,
+  } = useEnteringPaddyCustomers();
   const { data, isLoading, isFetching, error } = useEnteringPaddies({
     ...pagination,
     query: debouncedSearchTerm,
     sortBy: sorting.sortBy,
     sortByAction: sorting.sortDirection,
   });
-  const customers = customersData?.items ?? [];
   const hasCustomers = customers.length > 0;
   const canManageEnteringPaddy = canCreate && hasCustomers;
 
@@ -131,7 +129,11 @@ export function EnteringPaddyList() {
           </div>
 
           <Button
-            onClick={() => setIsFormOpen(true)}
+            onClick={() => {
+              void queryClient.invalidateQueries({ queryKey: ["customers"] });
+              void refetchCustomers();
+              setIsFormOpen(true);
+            }}
             className="hover:cursor-pointer"
             disabled={!canManageEnteringPaddy || isLoadingActiveSeason || isLoadingCustomers}
           >
